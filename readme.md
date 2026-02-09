@@ -23,7 +23,6 @@ This is a customized version of nnU-Net v2 with significant enhancements to the 
 See the [wandb integration guide](documentation/wandb_integration.md) for detailed usage instructions.
 
 ### Improved User Experience
-- **Combined commands** - run fingerprint, plan, and preprocess in a single command
 - **Better inference display** - single progress bar for all cases with average time per case
 - **Cleaner output** - organized messages and warnings, less clutter
 - **Time estimates** - see how long each stage will take
