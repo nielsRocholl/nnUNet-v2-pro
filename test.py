@@ -15,7 +15,16 @@ import os
 if __name__ == '__main__':
     # import step from argparse
     parser = argparse.ArgumentParser()
-    parser.add_argument('--step', type=str, required=True)
+    parser.add_argument('--step', type=str, required=True,
+                        help='Step to run: fingerprint, plan, preprocess, plan_and_preprocess, train, inference')
+    parser.add_argument('--use-wandb', action='store_true', default=False,
+                        help='Enable Weights & Biases logging for training')
+    parser.add_argument('--wandb-project', type=str, default=None,
+                        help='Wandb project name (defaults to dataset name if not specified)')
+    parser.add_argument('--wandb-run-name', type=str, default=None,
+                        help='Wandb run name (auto-generated if not specified)')
+    parser.add_argument('--wandb-tags', type=str, default=None,
+                        help='Wandb tags (comma-separated)')
     args = parser.parse_args()
     step = args.step
 
@@ -84,12 +93,21 @@ if __name__ == '__main__':
             device = torch.device('cpu')
             print("MPS not available, using CPU")
         
+        # Parse wandb tags if provided
+        wandb_tags = None
+        if args.wandb_tags:
+            wandb_tags = [tag.strip() for tag in args.wandb_tags.split(',')]
+        
         run_training(
             dataset_name_or_id='47',  # Pass as string - function expects string or Dataset name
             configuration='3d_fullres',
             fold=0,
             device=device,
-            disable_checkpointing=False  # Keep checkpointing so we have a model for inference
+            disable_checkpointing=False,  # Keep checkpointing so we have a model for inference
+            use_wandb=args.use_wandb,  # Enable wandb logging via --use-wandb flag
+            wandb_project=args.wandb_project,  # Optional: set project name via --wandb-project
+            wandb_run_name=args.wandb_run_name,  # Optional: set run name via --wandb-run-name
+            wandb_tags=wandb_tags  # Optional: set tags via --wandb-tags
         )
         print(f"\nTraining completed successfully")
     elif step == 'inference':

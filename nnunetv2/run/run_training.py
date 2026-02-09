@@ -2,7 +2,7 @@ import multiprocessing
 import os
 import socket
 import warnings
-from typing import Union, Optional
+from typing import Union, Optional, List
 
 import nnunetv2
 import torch.cuda
@@ -39,7 +39,12 @@ def get_trainer_from_args(dataset_name_or_id: Union[int, str],
                           trainer_name: str = 'nnUNetTrainer',
                           plans_identifier: str = 'nnUNetPlans',
                           device: torch.device = torch.device('cuda'),
-                          display=None):
+                          display=None,
+                          use_wandb: bool = None,
+                          wandb_project: str = None,
+                          wandb_entity: str = None,
+                          wandb_run_name: str = None,
+                          wandb_tags: List[str] = None):
     # load nnunet class and do sanity checks
     nnunet_trainer = recursive_find_python_class(join(nnunetv2.__path__[0], "training", "nnUNetTrainer"),
                                                 trainer_name, 'nnunetv2.training.nnUNetTrainer')
@@ -68,7 +73,10 @@ def get_trainer_from_args(dataset_name_or_id: Union[int, str],
     plans = load_json(plans_file)
     dataset_json = load_json(join(preprocessed_dataset_folder_base, 'dataset.json'))
     nnunet_trainer = nnunet_trainer(plans=plans, configuration=configuration, fold=fold,
-                                    dataset_json=dataset_json, device=device, display=display)
+                                    dataset_json=dataset_json, device=device, display=display,
+                                    use_wandb=use_wandb, wandb_project=wandb_project,
+                                    wandb_entity=wandb_entity, wandb_run_name=wandb_run_name,
+                                    wandb_tags=wandb_tags)
     return nnunet_trainer
 
 
@@ -152,7 +160,12 @@ def run_training(dataset_name_or_id: Union[str, int],
                  val_with_best: bool = False,
                  device: torch.device = torch.device('cuda'),
                  display=None,
-                 verbose: bool = False):
+                 verbose: bool = False,
+                 use_wandb: bool = None,
+                 wandb_project: str = None,
+                 wandb_entity: str = None,
+                 wandb_run_name: str = None,
+                 wandb_tags: List[str] = None):
     if plans_identifier == 'nnUNetPlans':
         print("\n############################\n"
               "INFO: You are using the old nnU-Net default plans. We have updated our recommendations. "
@@ -197,16 +210,17 @@ def run_training(dataset_name_or_id: Union[str, int],
                  join=True)
     else:
         nnunet_trainer = get_trainer_from_args(dataset_name_or_id, configuration, fold, trainer_class_name,
-                                               plans_identifier, device=device, display=display)
+                                               plans_identifier, device=device, display=display,
+                                               use_wandb=use_wandb, wandb_project=wandb_project,
+                                               wandb_entity=wandb_entity, wandb_run_name=wandb_run_name,
+                                               wandb_tags=wandb_tags)
 
         if disable_checkpointing:
             nnunet_trainer.disable_checkpointing = disable_checkpointing
 
         assert not (continue_training and only_run_validation), f'Cannot set --c and --val flag at the same time. Dummy.'
 
-        maybe_load_checkpoint(nnunet_trainer, continue_training, only_run_validation, pretrained_weights)
-
-        # Create display if not provided
+        # Create display BEFORE loading checkpoint so citation can be shown properly
         if display is None:
             from nnunetv2.utilities.cli_display import TrainingDisplay
             from nnunetv2.utilities.dataset_name_id_conversion import maybe_convert_to_dataset_name
@@ -215,8 +229,10 @@ def run_training(dataset_name_or_id: Union[str, int],
             device_str = device.type if isinstance(device, torch.device) else str(device)
             num_epochs = nnunet_trainer.num_epochs
             
-            display = TrainingDisplay(dataset_name, configuration, fold, num_epochs, device_str, verbose)
+            display = TrainingDisplay(dataset_name, configuration, fold, num_epochs, device_str, verbose, trainer=nnunet_trainer)
             nnunet_trainer.display = display
+
+        maybe_load_checkpoint(nnunet_trainer, continue_training, only_run_validation, pretrained_weights)
 
         if torch.cuda.is_available():
             cudnn.deterministic = False
@@ -268,6 +284,18 @@ def run_training_entry():
                     help="Use this to set the device the training should run with. Available options are 'cuda' "
                          "(GPU), 'cpu' (CPU) and 'mps' (Apple M1/M2). Do NOT use this to set which GPU ID! "
                          "Use CUDA_VISIBLE_DEVICES=X nnUNetv2_train [...] instead!")
+    parser.add_argument('--use-wandb', action='store_true', required=False,
+                        help='[OPTIONAL] Enable Weights & Biases logging for training metrics.')
+    parser.add_argument('--no-wandb', action='store_true', required=False,
+                        help='[OPTIONAL] Explicitly disable Weights & Biases logging (overrides env vars).')
+    parser.add_argument('--wandb-project', type=str, required=False, default=None,
+                        help='[OPTIONAL] Wandb project name. Defaults to dataset name.')
+    parser.add_argument('--wandb-entity', type=str, required=False, default=None,
+                        help='[OPTIONAL] Wandb entity/team name.')
+    parser.add_argument('--wandb-run-name', type=str, required=False, default=None,
+                        help='[OPTIONAL] Wandb run name. Auto-generated if not provided.')
+    parser.add_argument('--wandb-tags', type=str, required=False, default=None,
+                        help='[OPTIONAL] Wandb tags (comma-separated).')
     args = parser.parse_args()
 
     assert args.device in ['cpu', 'cuda', 'mps'], f'-device must be either cpu, mps or cuda. Other devices are not tested/supported. Got: {args.device}.'
@@ -283,9 +311,13 @@ def run_training_entry():
     else:
         device = torch.device('mps')
 
+    use_wandb = True if args.use_wandb else False if args.no_wandb else None
+    wandb_tags = [t.strip() for t in args.wandb_tags.split(',')] if args.wandb_tags else None
+    
     run_training(args.dataset_name_or_id, args.configuration, args.fold, args.tr, args.p, args.pretrained_weights,
                  args.num_gpus, args.npz, args.c, args.val, args.disable_checkpointing, args.val_best,
-                 device=device)
+                 device=device, use_wandb=use_wandb, wandb_project=args.wandb_project,
+                 wandb_entity=args.wandb_entity, wandb_run_name=args.wandb_run_name, wandb_tags=wandb_tags)
 
 
 if __name__ == '__main__':

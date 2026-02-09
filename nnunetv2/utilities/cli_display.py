@@ -391,14 +391,16 @@ class PreprocessingDisplay:
 
 
 class TrainingDisplay:
-    def __init__(self, dataset_name: str, configuration: str, fold: int, num_epochs: int, device: str, verbose: bool = False):
+    def __init__(self, dataset_name: str, configuration: str, fold: int, num_epochs: int, device: str, verbose: bool = False, trainer=None):
         self.dataset_name = dataset_name
         self.configuration = configuration
         self.fold = fold
         self.num_epochs = num_epochs
         self.device = device
         self.verbose = verbose
-        self.console = Console()
+        self.trainer = trainer
+        # Enable hyperlinks in console for clickable wandb links
+        self.console = Console(force_terminal=True)
         self.progress = None
         self.epoch_task_id = None
         self.train_batch_task_id = None
@@ -413,6 +415,7 @@ class TrainingDisplay:
         self.best_dice = None
         self.num_train_batches = None
         self.num_val_batches = None
+        self._wandb_info = None
 
     def __enter__(self):
         self.start_time = time()
@@ -453,6 +456,15 @@ class TrainingDisplay:
             border_style="yellow"
         ))
         
+        # Show citation message if available
+        if self.trainer and hasattr(self.trainer, '_citation_message'):
+            citation_text = self.trainer._citation_message
+            self.console.print(Panel(
+                f"[dim]{citation_text}[/dim]",
+                border_style="dim",
+                title="[dim]Citation[/dim]"
+            ))
+        
         # Show training pipeline flow
         self._show_pipeline_flow()
         
@@ -482,7 +494,27 @@ class TrainingDisplay:
             else:
                 time_str = f"{seconds}s"
             self.console.print(f"\n[bold green]✓ Training completed in {time_str}[/bold green]")
+        
         return False
+    
+    def show_wandb_info(self):
+        """Show wandb tracking information with clickable links"""
+        if self._wandb_info is None:
+            return
+        
+        entity = self._wandb_info['entity']
+        project = self._wandb_info['project']
+        run_id = self._wandb_info['run_id']
+        run_name = self._wandb_info['run_name']
+        
+        self.console.print()
+        self.console.print(Panel(
+            f"[bold cyan]Weights & Biases[/bold cyan]\n\n"
+            f"Project: [link=https://wandb.ai/{entity}/{project}]{project}[/link]\n"
+            f"Run: [link=https://wandb.ai/{entity}/{project}/runs/{run_id}]{run_name}[/link]",
+            border_style="cyan",
+            title="[cyan]Tracking[/cyan]"
+        ))
 
     def show_configuration(self, config: Dict[str, Any]):
         table = Table(title="Training Configuration", box=box.ROUNDED, show_header=False)

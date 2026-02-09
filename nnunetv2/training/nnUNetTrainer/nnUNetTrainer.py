@@ -65,11 +65,14 @@ from nnunetv2.utilities.get_network_from_plans import get_network_from_plans
 from nnunetv2.utilities.helpers import empty_cache, dummy_context
 from nnunetv2.utilities.label_handling.label_handling import convert_labelmap_to_one_hot, determine_num_input_channels
 from nnunetv2.utilities.plans_handling.plans_handler import PlansManager
+from nnunetv2.utilities.wandb_config import resolve_wandb_config
 
 
 class nnUNetTrainer(object):
     def __init__(self, plans: dict, configuration: str, fold: int, dataset_json: dict,
-                 device: torch.device = torch.device('cuda'), display=None):
+                 device: torch.device = torch.device('cuda'), display=None,
+                 use_wandb: bool = None, wandb_project: str = None, wandb_entity: str = None,
+                 wandb_run_name: str = None, wandb_tags: List[str] = None):
         # From https://grugbrain.dev/. Worth a read ya big brains ;-)
 
         # apex predator of grug is complexity
@@ -174,6 +177,18 @@ class nnUNetTrainer(object):
                               timestamp.second))
         self.logger = nnUNetLogger()
 
+        ### wandb initialization (will be resumed in load_checkpoint if continuing training)
+        self.wandb_config = resolve_wandb_config(use_wandb, wandb_project, wandb_entity, wandb_run_name, wandb_tags)
+        self.wandb = None
+        self.wandb_run_id = None
+        self._wandb_module = None
+        if self.wandb_config['use_wandb'] and self.local_rank == 0:
+            try:
+                import wandb
+                self._wandb_module = wandb
+            except ImportError:
+                self.print_to_log_file("WARNING: wandb requested but not installed. Install with: pip install wandb")
+
         ### placeholders
         self.dataloader_train = self.dataloader_val = None  # see on_train_start
 
@@ -189,14 +204,10 @@ class nnUNetTrainer(object):
         self.disable_checkpointing = False
 
         self.was_initialized = False
-
-        self.print_to_log_file("\n#######################################################################\n"
-                               "Please cite the following paper when using nnU-Net:\n"
-                               "Isensee, F., Jaeger, P. F., Kohl, S. A., Petersen, J., & Maier-Hein, K. H. (2021). "
-                               "nnU-Net: a self-configuring method for deep learning-based biomedical image segmentation. "
-                               "Nature methods, 18(2), 203-211.\n"
-                               "#######################################################################\n",
-                               also_print_to_console=True, add_timestamp=False)
+        self._citation_message = ("Please cite the following paper when using nnU-Net:\n"
+                                   "Isensee, F., Jaeger, P. F., Kohl, S. A., Petersen, J., & Maier-Hein, K. H. (2021). "
+                                   "nnU-Net: a self-configuring method for deep learning-based biomedical image segmentation. "
+                                   "Nature methods, 18(2), 203-211.")
 
     def initialize(self):
         if not self.was_initialized:
@@ -887,6 +898,32 @@ class nnUNetTrainer(object):
     def on_train_start(self):
         if not self.was_initialized:
             self.initialize()
+        
+        # initialize wandb if not already initialized
+        if self.wandb_config['use_wandb'] and self.wandb is None and self.local_rank == 0 and self._wandb_module is not None:
+            try:
+                os.environ['WANDB_SILENT'] = 'true'
+                timestamp = datetime.now()
+                run_name = self.wandb_config['run_name'] or f"{self.plans_manager.dataset_name}_{self.configuration_name}_fold{self.fold}_{timestamp.strftime('%Y%m%d_%H%M%S')}"
+                
+                self._wandb_module.init(
+                    project=self.wandb_config['project'] or self.plans_manager.dataset_name,
+                    entity=self.wandb_config['entity'],
+                    name=run_name,
+                    tags=self.wandb_config['tags']
+                )
+                self.wandb = self._wandb_module
+                self.wandb_run_id = self.wandb.run.id
+                
+                if self.display is not None:
+                    self.display._wandb_info = {
+                        'project': self.wandb_config['project'] or self.plans_manager.dataset_name,
+                        'entity': self.wandb_config['entity'] or self.wandb.run.entity,
+                        'run_id': self.wandb.run.id,
+                        'run_name': run_name
+                    }
+            except Exception as e:
+                self.print_to_log_file(f"WARNING: Failed to initialize wandb: {e}")
 
         # dataloaders must be instantiated here (instead of __init__) because they need access to the training data
         # which may not be present  when doing inference
@@ -908,6 +945,8 @@ class nnUNetTrainer(object):
             }
             self.display.show_configuration(config_dict)
             self.display.set_batch_counts(self.num_iterations_per_epoch, self.num_val_iterations_per_epoch)
+            if self.display._wandb_info is not None:
+                self.display.show_wandb_info()
         
         empty_cache(self.device)
 
@@ -934,6 +973,23 @@ class nnUNetTrainer(object):
         self.plot_network_architecture()
 
         self._save_debug_information()
+
+        if self.wandb is not None:
+            self.wandb.config.update({
+                'dataset_name': self.plans_manager.dataset_name,
+                'configuration': self.configuration_name,
+                'fold': self.fold,
+                'trainer': self.__class__.__name__,
+                'batch_size': self.batch_size,
+                'patch_size': self.configuration_manager.patch_size,
+                'spacing': self.configuration_manager.spacing,
+                'num_epochs': self.num_epochs,
+                'initial_lr': self.initial_lr,
+                'device': str(self.device),
+                'oversample_foreground_percent': self.oversample_foreground_percent,
+                'num_iterations_per_epoch': self.num_iterations_per_epoch,
+                'num_val_iterations_per_epoch': self.num_val_iterations_per_epoch
+            })
 
         # print(f"batch size: {self.batch_size}")
         # print(f"oversample: {self.oversample_foreground_percent}")
@@ -963,6 +1019,8 @@ class nnUNetTrainer(object):
 
         empty_cache(self.device)
         self.print_to_log_file("Training done.")
+        if self.wandb is not None:
+            self.wandb.finish()
 
     def on_train_epoch_start(self):
         self.network.train()
@@ -973,6 +1031,9 @@ class nnUNetTrainer(object):
             f"Current learning rate: {np.round(self.optimizer.param_groups[0]['lr'], decimals=5)}")
         # lrs are the same for all workers so we don't need to gather them in case of DDP training
         self.logger.log('lrs', self.optimizer.param_groups[0]['lr'], self.current_epoch)
+        
+        if self.wandb is not None:
+            self.wandb.log({'lr': self.optimizer.param_groups[0]['lr']}, step=self.current_epoch)
         
         # Update display
         if self.display is not None:
@@ -1143,6 +1204,18 @@ class nnUNetTrainer(object):
                                                self.logger.my_fantastic_logging['dice_per_class_or_region'][-1]])
         self.print_to_log_file(f"Epoch time: {epoch_time} s")
         
+        if self.wandb is not None:
+            dice_per_class = self.logger.my_fantastic_logging['dice_per_class_or_region'][-1]
+            self.wandb.log({
+                'train_loss': train_loss,
+                'val_loss': val_loss,
+                'mean_fg_dice': dice,
+                'ema_fg_dice': np.round(self.logger.my_fantastic_logging['ema_fg_dice'][-1], decimals=4),
+                'lr': lr,
+                'epoch_time': epoch_time,
+                **{f'dice_class_{i}': np.round(d, decimals=4) for i, d in enumerate(dice_per_class)}
+            }, step=self.current_epoch)
+        
         # Update display
         if self.display is not None:
             self.display.show_epoch_summary(train_loss, val_loss, dice, lr, epoch_time)
@@ -1157,6 +1230,9 @@ class nnUNetTrainer(object):
             self._best_ema = self.logger.my_fantastic_logging['ema_fg_dice'][-1]
             self.print_to_log_file(f"Yayy! New best EMA pseudo Dice: {np.round(self._best_ema, decimals=4)}")
             self.save_checkpoint(join(self.output_folder, 'checkpoint_best.pth'))
+            
+            if self.wandb is not None:
+                self.wandb.log({'best_ema_dice': np.round(self._best_ema, decimals=4), 'is_best': True}, step=self.current_epoch)
             
             # Update display
             if self.display is not None:
@@ -1185,6 +1261,7 @@ class nnUNetTrainer(object):
                     '_best_ema': self._best_ema,
                     'current_epoch': self.current_epoch + 1,
                     'init_args': self.my_init_kwargs,
+                    'wandb_run_id': self.wandb_run_id,
                     'trainer_name': self.__class__.__name__,
                     'inference_allowed_mirroring_axes': self.inference_allowed_mirroring_axes,
                 }
@@ -1213,6 +1290,33 @@ class nnUNetTrainer(object):
         self._best_ema = checkpoint['_best_ema']
         self.inference_allowed_mirroring_axes = checkpoint[
             'inference_allowed_mirroring_axes'] if 'inference_allowed_mirroring_axes' in checkpoint.keys() else self.inference_allowed_mirroring_axes
+        
+        # resume wandb run if enabled and run_id exists in checkpoint
+        if self.wandb_config['use_wandb'] and checkpoint.get('wandb_run_id') and self.local_rank == 0:
+            if self._wandb_module is None:
+                try:
+                    import wandb
+                    self._wandb_module = wandb
+                except ImportError:
+                    self.print_to_log_file("WARNING: wandb requested but not installed. Install with: pip install wandb")
+                    return
+            
+            try:
+                if self.wandb is not None:
+                    self.wandb.finish()
+                os.environ['WANDB_SILENT'] = 'true'
+                self._wandb_module.init(id=checkpoint['wandb_run_id'], resume="must")
+                self.wandb = self._wandb_module
+                self.wandb_run_id = checkpoint['wandb_run_id']
+                if self.display is not None:
+                    self.display._wandb_info = {
+                        'project': self.wandb.run.project,
+                        'entity': self.wandb.run.entity,
+                        'run_id': self.wandb.run.id,
+                        'run_name': self.wandb.run.name
+                    }
+            except Exception as e:
+                self.print_to_log_file(f"WARNING: Failed to resume wandb run: {e}")
 
         # messing with state dict naming schemes. Facepalm.
         if self.is_ddp:
