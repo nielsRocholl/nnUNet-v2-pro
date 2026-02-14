@@ -72,7 +72,7 @@ class nnUNetTrainer(object):
     def __init__(self, plans: dict, configuration: str, fold: int, dataset_json: dict,
                  device: torch.device = torch.device('cuda'), display=None,
                  use_wandb: bool = None, wandb_project: str = None, wandb_entity: str = None,
-                 wandb_run_name: str = None, wandb_tags: List[str] = None):
+                 wandb_run_name: str = None, wandb_tags: List[str] = None, **kwargs):
         # From https://grugbrain.dev/. Worth a read ya big brains ;-)
 
         # apex predator of grug is complexity
@@ -113,7 +113,12 @@ class nnUNetTrainer(object):
         self.display = display
         self.my_init_kwargs = {}
         for k in inspect.signature(self.__init__).parameters.keys():
-            self.my_init_kwargs[k] = locals()[k]
+            if k == 'kwargs':
+                continue
+            if k in locals():
+                self.my_init_kwargs[k] = locals()[k]
+            elif k in kwargs:
+                self.my_init_kwargs[k] = kwargs[k]
 
         ###  Saving all the init args into class variables for later access
         self.plans_manager = PlansManager(plans)
@@ -969,6 +974,10 @@ class nnUNetTrainer(object):
         shutil.copy(join(self.preprocessed_dataset_folder_base, 'dataset_fingerprint.json'),
                     join(self.output_folder_base, 'dataset_fingerprint.json'))
 
+        config_path = getattr(self, 'config_path', None)
+        if config_path and isfile(config_path):
+            shutil.copy(config_path, join(self.output_folder_base, 'nnunet_pro_config.json'))
+
         # produces a pdf in output folder
         self.plot_network_architecture()
 
@@ -1334,6 +1343,10 @@ class nnUNetTrainer(object):
             if checkpoint['grad_scaler_state'] is not None:
                 self.grad_scaler.load_state_dict(checkpoint['grad_scaler_state'])
 
+    def _prepare_validation_data(self, data: torch.Tensor) -> torch.Tensor:
+        """Override in subclasses to modify data before validation prediction (e.g. add prompt channel)."""
+        return data
+
     def perform_actual_validation(self, save_probabilities: bool = False):
         self.set_deep_supervision_enabled(False)
         self.network.eval()
@@ -1406,6 +1419,7 @@ class nnUNetTrainer(object):
                 self.print_to_log_file(f'{k}, shape {data.shape}, rank {self.local_rank}')
                 output_filename_truncated = join(validation_output_folder, k)
 
+                data = self._prepare_validation_data(data)
                 prediction = predictor.predict_sliding_window_return_logits(data)
                 prediction = prediction.cpu()
 

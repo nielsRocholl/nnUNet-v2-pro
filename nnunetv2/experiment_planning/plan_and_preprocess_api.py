@@ -53,6 +53,9 @@ def extract_fingerprints(dataset_ids: List[int], fingerprint_extractor_class_nam
     fingerprint_extractor_class = recursive_find_python_class(join(nnunetv2.__path__[0], "experiment_planning"),
                                                               fingerprint_extractor_class_name,
                                                               current_module="nnunetv2.experiment_planning")
+    if len(dataset_ids) > 1:
+        names = [convert_id_to_dataset_name(d) for d in dataset_ids]
+        Console().print(f"[bold]Processing {len(dataset_ids)} datasets:[/bold] {', '.join(names)}\n")
     for d in dataset_ids:
         extract_fingerprint_dataset(d, fingerprint_extractor_class, num_processes, check_dataset_integrity, clean,
                                     verbose)
@@ -102,6 +105,9 @@ def plan_experiments(dataset_ids: List[int], experiment_planner_class_name: str 
     experiment_planner = recursive_find_python_class(join(nnunetv2.__path__[0], "experiment_planning"),
                                                      experiment_planner_class_name,
                                                      current_module="nnunetv2.experiment_planning")
+    if len(dataset_ids) > 1:
+        names = [convert_id_to_dataset_name(d) for d in dataset_ids]
+        console.print(f"[bold]Processing {len(dataset_ids)} datasets:[/bold] {', '.join(names)}\n")
     plans_identifier = None
     for d in dataset_ids:
         _, plans_identifier = plan_experiment_dataset(d, experiment_planner, gpu_memory_target_in_gb,
@@ -176,5 +182,8 @@ def preprocess(dataset_ids: List[int],
                configurations: Union[Tuple[str], List[str]] = ('3d_fullres', '3d_lowres'),
                num_processes: Union[int, Tuple[int, ...], List[int]] = (4, 8),
                verbose: bool = False):
+    if len(dataset_ids) > 1:
+        names = [convert_id_to_dataset_name(d) for d in dataset_ids]
+        Console().print(f"[bold]Processing {len(dataset_ids)} datasets:[/bold] {', '.join(names)}\n")
     for d in dataset_ids:
         preprocess_dataset(d, plans_identifier, configurations, num_processes, verbose)

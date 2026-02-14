@@ -31,7 +31,7 @@ if __name__ == '__main__':
     if step == 'fingerprint':
         # Test fingerprint extraction with new CLI display
         fingerprint = extract_fingerprint_dataset(
-            dataset_id=47,
+            dataset_id=10,
             check_dataset_integrity=True,
             clean=True,
             verbose=False  # Set to True to see verbose output
@@ -40,14 +40,14 @@ if __name__ == '__main__':
     elif step == 'plan':
         # Test experiment planning with new CLI display
         plans, plans_identifier = plan_experiment_dataset(
-            dataset_id=47,
+            dataset_id=10,
             verbose=False  # Set to True to see verbose output
         )
         print(f"\nPlans identifier: {plans_identifier}")
     elif step == 'preprocess':
         # Test preprocessing with new CLI display
         preprocess_dataset(
-            dataset_id=47,
+            dataset_id=10,
             verbose=False  # Set to True to see verbose output
         )
         print(f"\nPreprocessing completed successfully")
@@ -55,17 +55,17 @@ if __name__ == '__main__':
         # Test combined fingerprint extraction, planning, and preprocessing
         # This mimics nnUNetv2_plan_and_preprocess command
         fingerprint = extract_fingerprint_dataset(
-            dataset_id=47,
+            dataset_id=10,
             check_dataset_integrity=True,
             clean=True,
             verbose=False
         )
         plans, plans_identifier = plan_experiment_dataset(
-            dataset_id=47,
+            dataset_id=10,
             verbose=False
         )
         preprocess_dataset(
-            dataset_id=47,
+            dataset_id=10,
             plans_identifier=plans_identifier,
             verbose=False
         )
@@ -99,7 +99,7 @@ if __name__ == '__main__':
             wandb_tags = [tag.strip() for tag in args.wandb_tags.split(',')]
         
         run_training(
-            dataset_name_or_id='47',  # Pass as string - function expects string or Dataset name
+            dataset_name_or_id='10',  # Pass as string - function expects string or Dataset name
             configuration='3d_fullres',
             fold=0,
             device=device,
@@ -126,7 +126,7 @@ if __name__ == '__main__':
             device = torch.device('cpu')
             print("MPS not available, using CPU")
         
-        dataset_id = 47
+        dataset_id = 10
         configuration = '3d_fullres'
         fold = 0
         trainer_name = 'nnUNetTrainer'

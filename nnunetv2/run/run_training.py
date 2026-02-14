@@ -44,7 +44,8 @@ def get_trainer_from_args(dataset_name_or_id: Union[int, str],
                           wandb_project: str = None,
                           wandb_entity: str = None,
                           wandb_run_name: str = None,
-                          wandb_tags: List[str] = None):
+                          wandb_tags: List[str] = None,
+                          config_path: Optional[str] = None):
     # load nnunet class and do sanity checks
     nnunet_trainer = recursive_find_python_class(join(nnunetv2.__path__[0], "training", "nnUNetTrainer"),
                                                 trainer_name, 'nnunetv2.training.nnUNetTrainer')
@@ -55,6 +56,9 @@ def get_trainer_from_args(dataset_name_or_id: Union[int, str],
                            f'else, please move it there.')
     assert issubclass(nnunet_trainer, nnUNetTrainer), 'The requested nnunet trainer class must inherit from ' \
                                                     'nnUNetTrainer'
+
+    if trainer_name == 'nnUNetTrainerPromptAware' and (config_path is None or config_path == ''):
+        raise ValueError('--config is required for nnUNetTrainerPromptAware. Provide path to ROI config JSON.')
 
     # handle dataset input. If it's an ID we need to convert to int from string
     if dataset_name_or_id.startswith('Dataset'):
@@ -72,11 +76,16 @@ def get_trainer_from_args(dataset_name_or_id: Union[int, str],
     plans_file = join(preprocessed_dataset_folder_base, plans_identifier + '.json')
     plans = load_json(plans_file)
     dataset_json = load_json(join(preprocessed_dataset_folder_base, 'dataset.json'))
-    nnunet_trainer = nnunet_trainer(plans=plans, configuration=configuration, fold=fold,
-                                    dataset_json=dataset_json, device=device, display=display,
-                                    use_wandb=use_wandb, wandb_project=wandb_project,
-                                    wandb_entity=wandb_entity, wandb_run_name=wandb_run_name,
-                                    wandb_tags=wandb_tags)
+    init_kwargs = dict(
+        plans=plans, configuration=configuration, fold=fold,
+        dataset_json=dataset_json, device=device, display=display,
+        use_wandb=use_wandb, wandb_project=wandb_project,
+        wandb_entity=wandb_entity, wandb_run_name=wandb_run_name,
+        wandb_tags=wandb_tags,
+    )
+    if config_path is not None and config_path != '':
+        init_kwargs['config_path'] = config_path
+    nnunet_trainer = nnunet_trainer(**init_kwargs)
     return nnunet_trainer
 
 
@@ -121,11 +130,11 @@ def cleanup_ddp():
 
 
 def run_ddp(rank, dataset_name_or_id, configuration, fold, tr, p, disable_checkpointing, c, val,
-            pretrained_weights, npz, val_with_best, world_size):
+            pretrained_weights, npz, val_with_best, world_size, config_path=None):
     setup_ddp(rank, world_size)
     torch.cuda.set_device(torch.device('cuda', dist.get_rank()))
 
-    nnunet_trainer = get_trainer_from_args(dataset_name_or_id, configuration, fold, tr, p)
+    nnunet_trainer = get_trainer_from_args(dataset_name_or_id, configuration, fold, tr, p, config_path=config_path)
 
     if disable_checkpointing:
         nnunet_trainer.disable_checkpointing = disable_checkpointing
@@ -165,7 +174,9 @@ def run_training(dataset_name_or_id: Union[str, int],
                  wandb_project: str = None,
                  wandb_entity: str = None,
                  wandb_run_name: str = None,
-                 wandb_tags: List[str] = None):
+                 wandb_tags: List[str] = None,
+                 config_path: Optional[str] = None,
+                 num_epochs: Optional[int] = None):
     if plans_identifier == 'nnUNetPlans':
         print("\n############################\n"
               "INFO: You are using the old nnU-Net default plans. We have updated our recommendations. "
@@ -205,7 +216,8 @@ def run_training(dataset_name_or_id: Union[str, int],
                      pretrained_weights,
                      export_validation_probabilities,
                      val_with_best,
-                     num_gpus),
+                     num_gpus,
+                     config_path),
                  nprocs=num_gpus,
                  join=True)
     else:
@@ -213,10 +225,12 @@ def run_training(dataset_name_or_id: Union[str, int],
                                                plans_identifier, device=device, display=display,
                                                use_wandb=use_wandb, wandb_project=wandb_project,
                                                wandb_entity=wandb_entity, wandb_run_name=wandb_run_name,
-                                               wandb_tags=wandb_tags)
+                                               wandb_tags=wandb_tags, config_path=config_path)
 
         if disable_checkpointing:
             nnunet_trainer.disable_checkpointing = disable_checkpointing
+        if num_epochs is not None:
+            nnunet_trainer.num_epochs = num_epochs
 
         assert not (continue_training and only_run_validation), f'Cannot set --c and --val flag at the same time. Dummy.'
 
@@ -258,6 +272,10 @@ def run_training_entry():
                         help='Fold of the 5-fold cross-validation. Should be an int between 0 and 4.')
     parser.add_argument('-tr', type=str, required=False, default='nnUNetTrainer',
                         help='[OPTIONAL] Use this flag to specify a custom trainer. Default: nnUNetTrainer')
+    parser.add_argument('--config', type=str, required=False, default=None,
+                        help='[REQUIRED for nnUNetTrainerPromptAware] Path to ROI config JSON.')
+    parser.add_argument('--epochs', type=int, required=False, default=None,
+                        help='[OPTIONAL] Override number of training epochs (for overfit testing).')
     parser.add_argument('-p', type=str, required=False, default='nnUNetPlans',
                         help='[OPTIONAL] Use this flag to specify a custom plans identifier. Default: nnUNetPlans')
     parser.add_argument('-pretrained_weights', type=str, required=False, default=None,
@@ -317,7 +335,8 @@ def run_training_entry():
     run_training(args.dataset_name_or_id, args.configuration, args.fold, args.tr, args.p, args.pretrained_weights,
                  args.num_gpus, args.npz, args.c, args.val, args.disable_checkpointing, args.val_best,
                  device=device, use_wandb=use_wandb, wandb_project=args.wandb_project,
-                 wandb_entity=args.wandb_entity, wandb_run_name=args.wandb_run_name, wandb_tags=wandb_tags)
+                 wandb_entity=args.wandb_entity, wandb_run_name=args.wandb_run_name, wandb_tags=wandb_tags,
+                 config_path=args.config, num_epochs=args.epochs)
 
 
 if __name__ == '__main__':

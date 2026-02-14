@@ -1,5 +1,31 @@
 from nnunetv2.configuration import default_num_processes
 from nnunetv2.experiment_planning.plan_and_preprocess_api import extract_fingerprints, plan_experiments, preprocess
+from nnunetv2.utilities.dataset_name_id_conversion import convert_dataset_name_to_id, convert_id_to_dataset_name
+from nnunetv2.utilities.multi_dataset_merge import create_merged_dataset
+from rich.console import Console
+
+
+def _resolve_dataset_ids(args) -> list:
+    """If --merge: create merged dataset, return [output_id]. Else return args.d."""
+    if not getattr(args, "merge", False):
+        return args.d
+    if not getattr(args, "output_dataset", None) or len(args.d) < 2:
+        raise ValueError("--merge requires -o/--output-dataset and at least 2 dataset IDs")
+    o = args.output_dataset
+    if o.isdigit():
+        output_folder = f"Dataset{int(o):03d}_Merged"
+        output_id = int(o)
+    else:
+        if not o.startswith("Dataset"):
+            raise ValueError("-o must be a dataset ID (e.g. 999) or full name (e.g. Dataset999_Combined)")
+        output_folder = o
+        output_id = convert_dataset_name_to_id(o)
+    source_names = [convert_id_to_dataset_name(d) for d in args.d]
+    Console().print(
+        f"[bold]Merging datasets:[/bold] {', '.join(source_names)} → [bold]{output_folder}[/bold]"
+    )
+    create_merged_dataset(args.d, output_folder)
+    return [output_id]
 
 
 def extract_fingerprint_entry():
@@ -20,11 +46,16 @@ def extract_fingerprint_entry():
     parser.add_argument("--clean", required=False, default=False, action="store_true",
                         help='[OPTIONAL] Set this flag to overwrite existing fingerprints. If this flag is not set and a '
                              'fingerprint already exists, the fingerprint extractor will not run.')
+    parser.add_argument('--merge', action='store_true',
+                        help='Merge -d datasets into one before processing')
+    parser.add_argument('-o', '--output-dataset', type=str, default=None,
+                        help='Output dataset ID or name (required with --merge). E.g. 999 or Dataset999_Combined')
     parser.add_argument('--verbose', required=False, action='store_true',
                         help='Set this to print a lot of stuff. Useful for debugging. Will disable progress bar! '
                              'Recommended for cluster environments')
     args, unrecognized_args = parser.parse_known_args()
-    extract_fingerprints(args.d, args.fpe, args.np, args.verify_dataset_integrity, args.clean, args.verbose)
+    dataset_ids = _resolve_dataset_ids(args)
+    extract_fingerprints(dataset_ids, args.fpe, args.np, args.verify_dataset_integrity, args.clean, args.verbose)
 
 
 def plan_experiment_entry():
@@ -62,11 +93,16 @@ def plan_experiment_entry():
                              'differently named plans file such that the nnunet default plans are not '
                              'overwritten. You will then need to specify your custom plans file with -p whenever '
                              'running other nnunet commands (training, inference etc)')
+    parser.add_argument('--merge', action='store_true',
+                        help='Merge -d datasets into one before processing')
+    parser.add_argument('-o', '--output-dataset', type=str, default=None,
+                        help='Output dataset ID or name (required with --merge). E.g. 999 or Dataset999_Combined')
     parser.add_argument('--verbose', required=False, action='store_true',
                         help='Set this to print a lot of stuff. Useful for debugging. Will disable progress bar! '
                              'Recommended for cluster environments')
     args, unrecognized_args = parser.parse_known_args()
-    plan_experiments(args.d, args.pl, args.gpu_memory_target, args.preprocessor_name, args.overwrite_target_spacing,
+    dataset_ids = _resolve_dataset_ids(args)
+    plan_experiments(dataset_ids, args.pl, args.gpu_memory_target, args.preprocessor_name, args.overwrite_target_spacing,
                      args.overwrite_plans_name, args.verbose)
 
 
@@ -94,16 +130,21 @@ def preprocess_entry():
                              "RAM available. Image resampling takes up a lot of RAM. MONITOR RAM USAGE AND "
                              "DECREASE -np IF YOUR RAM FILLS UP TOO MUCH!. Default: 4 processes for "
                              "3d_fullres, 8 for 3d_lowres and 4 for everything else")
+    parser.add_argument('--merge', action='store_true',
+                        help='Merge -d datasets into one before processing')
+    parser.add_argument('-o', '--output-dataset', type=str, default=None,
+                        help='Output dataset ID or name (required with --merge). E.g. 999 or Dataset999_Combined')
     parser.add_argument('--verbose', required=False, action='store_true',
                         help='Set this to print a lot of stuff. Useful for debugging. Will disable progress bar! '
                              'Recommended for cluster environments')
     args, unrecognized_args = parser.parse_known_args()
+    dataset_ids = _resolve_dataset_ids(args)
     if args.np is None:
         default_np = {"3d_fullres": 4, "3d_lowres": 8}
         np = [default_np[c] if c in default_np.keys() else 4 for c in args.c]
     else:
         np = args.np
-    preprocess(args.d, args.plans_name, configurations=args.c, num_processes=np, verbose=args.verbose)
+    preprocess(dataset_ids, args.plans_name, configurations=args.c, num_processes=np, verbose=args.verbose)
 
 
 def plan_and_preprocess_entry():
@@ -173,27 +214,26 @@ def plan_and_preprocess_entry():
                              "RAM available. Image resampling takes up a lot of RAM. MONITOR RAM USAGE AND "
                              "DECREASE -np IF YOUR RAM FILLS UP TOO MUCH!. Default: 4 processes for "
                              "3d_fullres, 8 for 3d_lowres and 4 for everything else")
+    parser.add_argument('--merge', action='store_true',
+                        help='Merge -d datasets into one before processing')
+    parser.add_argument('-o', '--output-dataset', type=str, default=None,
+                        help='Output dataset ID or name (required with --merge). E.g. 999 or Dataset999_Combined')
     parser.add_argument('--verbose', required=False, action='store_true',
                         help='Set this to print a lot of stuff. Useful for debugging. Will disable progress bar! '
                              'Recommended for cluster environments')
     args = parser.parse_args()
 
-    # fingerprint extraction
-    extract_fingerprints(args.d, args.fpe, args.npfp, args.verify_dataset_integrity, args.clean, args.verbose)
-
-    # experiment planning
-    plans_identifier = plan_experiments(args.d, args.pl, args.gpu_memory_target, args.preprocessor_name,
+    dataset_ids = _resolve_dataset_ids(args)
+    extract_fingerprints(dataset_ids, args.fpe, args.npfp, args.verify_dataset_integrity, args.clean, args.verbose)
+    plans_identifier = plan_experiments(dataset_ids, args.pl, args.gpu_memory_target, args.preprocessor_name,
                                         args.overwrite_target_spacing, args.overwrite_plans_name, args.verbose)
-
-    # manage default np
     if args.np is None:
         default_np = {"3d_fullres": 4, "3d_lowres": 8}
         np = [default_np[c] if c in default_np.keys() else 4 for c in args.c]
     else:
         np = args.np
-    # preprocessing
     if not args.no_pp:
-        preprocess(args.d, plans_identifier, args.c, np, args.verbose)
+        preprocess(dataset_ids, plans_identifier, args.c, np, args.verbose)
 
 
 if __name__ == '__main__':

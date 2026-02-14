@@ -20,19 +20,43 @@ This is a customized version of nnU-Net v2 with significant enhancements to the 
 - **Seamless resume support** - automatically continues tracking when resuming training
 - **Clickable links** in terminal output for quick access to your experiments
 
-See the [wandb integration guide](documentation/wandb_integration.md) for detailed usage instructions.
+See the [wandb integration guide](documentation/pro/wandb_integration.md) for detailed usage instructions.
 
 ### Improved User Experience
 - **Better inference display** - single progress bar for all cases with average time per case
 - **Cleaner output** - organized messages and warnings, less clutter
 - **Time estimates** - see how long each stage will take
 
+### Multi-Dataset Merge
+- **Merge multiple datasets** into one without copying raw files
+- Use `--merge` and `-o` with `nnUNetv2_plan_and_preprocess` (or the separate fingerprint/plan/preprocess commands)
+- Source datasets must share the same `channel_names`, `file_ending`, and `labels`
+
+See [documentation/pro/multi_dataset_merge.md](documentation/pro/multi_dataset_merge.md) for usage.
+
+### ROI-Prompted Segmentation (Steps 1–8)
+
+A complete prompt-aware extension for lesion segmentation:
+
+- **Prompt channel** — One extra input channel for point/centroid prompts (nnInteractive-style early concatenation)
+- **Coordinate handling** — Voxel or world-space points, converted to preprocessed `(z,y,x)`
+- **Prompt encoding** — Lesion centroids → heatmap (binary or EDT), merged with `torch.maximum`
+- **Prompt-aware training** — Four sampling modes (pos, pos+spurious, pos+no-prompt, negative) to handle noisy/missing prompts
+- **Large-lesion sampling** — Extra patches for lesions larger than one patch to reduce truncation bias
+- **nnUNetTrainerPromptAware** — Trainer variant wiring the prompt-aware dataloader; keeps standard Dice+CE loss
+- **ROI-only inference** — Sliding windows over dilated bbox only (no full-volume sliding)
+- **CLI** — `nnUNetv2_predict_roi` with `--config`, `--points_json`, optional `--points_space`
+
+See [documentation/pro/prompt_aware_guide.md](documentation/pro/prompt_aware_guide.md) for detailed usage.
+
 ## Getting Started
 
 For installation, dataset conversion, and usage instructions, refer to the [original nnU-Net v2 documentation](https://github.com/MIC-DKFZ/nnUNet).
 
 **Pro Version Features:**
-- [Weights & Biases Integration Guide](documentation/wandb_integration.md) - Track your experiments with wandb
+- [ROI-Prompted Segmentation Guide](documentation/pro/prompt_aware_guide.md) - Train and run inference with point prompts
+- [Weights & Biases Integration Guide](documentation/pro/wandb_integration.md) - Track your experiments with wandb
+- [Multi-Dataset Merge](documentation/pro/multi_dataset_merge.md) - Merge datasets without copying raw files
 
 ## Citation
 
