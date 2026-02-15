@@ -42,45 +42,43 @@ def verify_labels(label_file: str, readerclass: Type[BaseReaderWriter], expected
 
 
 def check_cases(image_files: List[str], label_file: str, expected_num_channels: int,
-                readerclass: Type[BaseReaderWriter]) -> bool:
+                readerclass: Type[BaseReaderWriter]) -> tuple:
+    """Returns (ok: bool, errors: list[str])."""
     rw = readerclass()
-    ret = True
+    errors = []
 
     images, properties_image = rw.read_images(image_files)
     segmentation, properties_seg = rw.read_seg(label_file)
 
-    # check for nans
     if np.any(np.isnan(images)):
-        print(f'Images contain NaN pixel values. You need to fix that by '
-              f'replacing NaN values with something that makes sense for your images!\nImages:\n{image_files}')
-        ret = False
+        errors.append(f'Images contain NaN. Images: {image_files}')
     if np.any(np.isnan(segmentation)):
-        print(f'Segmentation contains NaN pixel values. You need to fix that.\nSegmentation:\n{label_file}')
-        ret = False
+        errors.append(f'Segmentation contains NaN. Seg: {label_file}')
 
-    # check shapes
     shape_image = images.shape[1:]
     shape_seg = segmentation.shape[1:]
     if shape_image != shape_seg:
-        print('Error: Shape mismatch between segmentation and corresponding images. \nShape images: %s. '
-              '\nShape seg: %s. \nImage files: %s. \nSeg file: %s\n' %
-              (shape_image, shape_seg, image_files, label_file))
-        ret = False
+        errors.append(
+            f'Shape mismatch: images {shape_image} vs seg {shape_seg}. '
+            f'Images: {image_files}. Seg: {label_file}'
+        )
 
-    # check spacings
-    spacing_images = properties_image['spacing']
-    spacing_seg = properties_seg['spacing']
-    if not np.allclose(spacing_seg, spacing_images):
-        print('Error: Spacing mismatch between segmentation and corresponding images. \nSpacing images: %s. '
-              '\nSpacing seg: %s. \nImage files: %s. \nSeg file: %s\n' %
-              (spacing_images, spacing_seg, image_files, label_file))
-        ret = False
+    spacing_images = np.asarray(properties_image['spacing'])
+    spacing_seg = np.asarray(properties_seg['spacing'])
+    if len(spacing_images) != len(spacing_seg):
+        errors.append(
+            f'Spacing dimension mismatch: images {len(spacing_images)}D vs seg {len(spacing_seg)}D. '
+            f'Spacing images: {spacing_images}. Spacing seg: {spacing_seg}. Images: {image_files}. Seg: {label_file}'
+        )
+    elif not np.allclose(spacing_seg, spacing_images):
+        errors.append(
+            f'Spacing mismatch: images {spacing_images} vs seg {spacing_seg}. Images: {image_files}. Seg: {label_file}'
+        )
 
-    # check modalities
-    if not len(images) == expected_num_channels:
-        print('Error: Unexpected number of modalities. \nExpected: %d. \nGot: %d. \nImages: %s\n'
-              % (expected_num_channels, len(images), image_files))
-        ret = False
+    if len(images) != expected_num_channels:
+        errors.append(
+            f'Modality count: expected {expected_num_channels}, got {len(images)}. Images: {image_files}'
+        )
 
     # nibabel checks
     if 'nibabel_stuff' in properties_image.keys():
@@ -88,10 +86,9 @@ def check_cases(image_files: List[str], label_file: str, expected_num_channels: 
         affine_image = properties_image['nibabel_stuff']['original_affine']
         affine_seg = properties_seg['nibabel_stuff']['original_affine']
         if not np.allclose(affine_image, affine_seg):
-            print('WARNING: Affine is not the same for image and seg! \nAffine image: %s \nAffine seg: %s\n'
-                  'Image files: %s. \nSeg file: %s.\nThis can be a problem but doesn\'t have to be. Please run '
-                  'nnUNetv2_plot_overlay_pngs to verify if everything is OK!\n'
-                  % (affine_image, affine_seg, image_files, label_file))
+            errors.append(
+                f'[WARNING] Affine mismatch. Images: {image_files}. Seg: {label_file}'
+            )
 
     # sitk checks
     if 'sitk_stuff' in properties_image.keys():
@@ -100,17 +97,18 @@ def check_cases(image_files: List[str], label_file: str, expected_num_channels: 
         origin_image = properties_image['sitk_stuff']['origin']
         origin_seg = properties_seg['sitk_stuff']['origin']
         if not np.allclose(origin_image, origin_seg):
-            print('Warning: Origin mismatch between segmentation and corresponding images. \nOrigin images: %s. '
-                  '\nOrigin seg: %s. \nImage files: %s. \nSeg file: %s\n' %
-                  (origin_image, origin_seg, image_files, label_file))
+            errors.append(
+                f'[WARNING] Origin mismatch. Images: {image_files}. Seg: {label_file}'
+            )
         direction_image = properties_image['sitk_stuff']['direction']
         direction_seg = properties_seg['sitk_stuff']['direction']
         if not np.allclose(direction_image, direction_seg):
-            print('Warning: Direction mismatch between segmentation and corresponding images. \nDirection images: %s. '
-                  '\nDirection seg: %s. \nImage files: %s. \nSeg file: %s\n' %
-                  (direction_image, direction_seg, image_files, label_file))
+            errors.append(
+                f'[WARNING] Direction mismatch. Images: {image_files}. Seg: {label_file}'
+            )
 
-    return ret
+    has_error = any(not e.startswith('[WARNING]') for e in errors)
+    return (not has_error, errors)
 
 
 def verify_dataset_integrity(folder: str, num_processes: int = 8, display: Optional[object] = None) -> None:
@@ -211,14 +209,23 @@ def verify_dataset_integrity(folder: str, num_processes: int = 8, display: Optio
                 'Some segmentation images contained unexpected labels. Please check text output above to see which one(s).')
 
         # check whether shapes and spacings match between images and labels
-        result = p.starmap(
+        results = p.starmap(
             check_cases,
             zip(image_files, labelfiles, [num_modalities] * expected_num_training,
                 [reader_writer_class] * expected_num_training)
         )
-        if not all(result):
+        all_ok = all(r[0] for r in results)
+        if not all_ok:
+            all_errors = []
+            for r in results:
+                all_errors.extend(r[1])
+            for msg in all_errors:
+                if display is not None:
+                    display.add_message(msg, "warning")
+                else:
+                    print(msg)
             raise RuntimeError(
-                'Some images have errors. Please check text output above to see which one(s) and what\'s going on.')
+                'Dataset integrity check failed. See errors above.')
 
     # check for nans
     # check all same orientation nibabel

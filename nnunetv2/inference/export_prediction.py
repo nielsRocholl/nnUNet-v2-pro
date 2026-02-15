@@ -110,6 +110,43 @@ def export_prediction_from_logits(predicted_array_or_file: Union[np.ndarray, tor
                  properties_dict)
 
 
+def convert_preprocessed_to_original_space(
+    arr: Union[torch.Tensor, np.ndarray],
+    properties_dict: dict,
+    plans_manager: PlansManager,
+    configuration_manager: ConfigurationManager,
+    is_seg: bool = False,
+) -> np.ndarray:
+    """Convert preprocessed array to original image space (resample, insert crop, revert transpose)."""
+    arr = np.asarray(arr)
+    if arr.ndim == 3:
+        arr = arr[None]
+    spacing_transposed = [properties_dict["spacing"][i] for i in plans_manager.transpose_forward]
+    current_spacing = (
+        configuration_manager.spacing
+        if len(configuration_manager.spacing) == len(properties_dict["shape_after_cropping_and_before_resampling"])
+        else [spacing_transposed[0], *configuration_manager.spacing]
+    )
+    target_spacing = [properties_dict["spacing"][i] for i in plans_manager.transpose_forward]
+    fn = (
+        configuration_manager.resampling_fn_seg
+        if is_seg
+        else configuration_manager.resampling_fn_data
+    )
+    resampled = fn(
+        arr,
+        properties_dict["shape_after_cropping_and_before_resampling"],
+        current_spacing,
+        target_spacing,
+    )
+    if isinstance(resampled, torch.Tensor):
+        resampled = resampled.cpu().numpy()
+    resampled = np.squeeze(resampled)
+    out = np.zeros(properties_dict["shape_before_cropping"], dtype=resampled.dtype)
+    insert_crop_into_image(out, resampled, properties_dict["bbox_used_for_cropping"])
+    return out.transpose(plans_manager.transpose_backward)
+
+
 def resample_and_save(predicted: Union[torch.Tensor, np.ndarray], target_shape: List[int], output_file: str,
                       plans_manager: PlansManager, configuration_manager: ConfigurationManager, properties_dict: dict,
                       dataset_json_dict_or_file: Union[dict, str], num_threads_torch: int = default_num_processes,
