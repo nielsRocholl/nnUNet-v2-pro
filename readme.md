@@ -41,6 +41,13 @@ See [documentation/pro/multi_dataset_merge.md](documentation/pro/multi_dataset_m
 
 See [documentation/pro/dataset_integrity.md](documentation/pro/dataset_integrity.md) for usage.
 
+### Preprocessing Resume
+- **`--resume`** — Skip cases that already have preprocessed output; continue after OOM or interruption
+- Use with `nnUNetv2_plan_and_preprocess` or `nnUNetv2_preprocess`
+- Reduce `-np` when resuming after OOM
+
+See [documentation/pro/preprocessing_resume.md](documentation/pro/preprocessing_resume.md) for usage.
+
 ### ROI-Prompted Segmentation (Steps 1–8)
 
 A complete prompt-aware extension for lesion segmentation:
@@ -100,6 +107,7 @@ For installation, dataset conversion, and usage instructions, refer to the [orig
 - [Weights & Biases Integration Guide](documentation/pro/wandb_integration.md) - Track your experiments with wandb
 - [Multi-Dataset Merge](documentation/pro/multi_dataset_merge.md) - Merge datasets without copying raw files
 - [Dataset Integrity Verification](documentation/pro/dataset_integrity.md) - Verify geometry and optionally reject failing cases
+- [Preprocessing Resume](documentation/pro/preprocessing_resume.md) - Continue preprocessing after OOM or interruption
 - [Quality Check: Pro + ResEnc L](documentation/pro/quality_check_resenc_compatibility.md) - Compatibility verification
 
 ## Citation

@@ -117,7 +117,8 @@ def preprocess_dataset(dataset_id: int,
                        configurations: Union[Tuple[str], List[str]] = ('3d_fullres', '3d_lowres'),
                        num_processes: Union[int, Tuple[int, ...], List[int]] = (4, 8),
                        verbose: bool = False,
-                       display: Optional[object] = None) -> None:
+                       display: Optional[object] = None,
+                       resume: bool = False) -> None:
     from nnunetv2.utilities.cli_display import PreprocessingDisplay
     
     if not isinstance(num_processes, list):
@@ -158,7 +159,7 @@ def preprocess_dataset(dataset_id: int,
         with current_display:
             configuration_manager = plans_manager.get_configuration(c)
             preprocessor = configuration_manager.preprocessor_class(verbose=verbose)
-            preprocessor._run_internal(dataset_id, c, plans_identifier, n, current_display)
+            preprocessor._run_internal(dataset_id, c, plans_identifier, n, current_display, resume=resume)
             
             current_display.update_step("Copying ground truth", 50)
             # copy the gt to a folder in the nnUNet_preprocessed so that we can do validation even if the raw data is no
@@ -177,9 +178,10 @@ def preprocess(dataset_ids: List[int],
                plans_identifier: str = 'nnUNetPlans',
                configurations: Union[Tuple[str], List[str]] = ('3d_fullres', '3d_lowres'),
                num_processes: Union[int, Tuple[int, ...], List[int]] = (4, 8),
-               verbose: bool = False):
+               verbose: bool = False,
+               resume: bool = False):
     if len(dataset_ids) > 1:
         names = [convert_id_to_dataset_name(d) for d in dataset_ids]
         Console().print(f"[bold]Processing {len(dataset_ids)} datasets:[/bold] {', '.join(names)}\n")
     for d in dataset_ids:
-        preprocess_dataset(d, plans_identifier, configurations, num_processes, verbose)
+        preprocess_dataset(d, plans_identifier, configurations, num_processes, verbose, resume=resume)

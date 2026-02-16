@@ -349,7 +349,7 @@ class DefaultPreprocessor(object):
         return data
 
     def run(self, dataset_name_or_id: Union[int, str], configuration_name: str, plans_identifier: str,
-            num_processes: int, display: Optional[object] = None):
+            num_processes: int, display: Optional[object] = None, resume: bool = False):
         """
         data identifier = configuration name in plans. EZ.
         """
@@ -361,12 +361,12 @@ class DefaultPreprocessor(object):
             dataset = get_filenames_of_train_images_and_targets(join(nnUNet_raw, dataset_name), dataset_json)
             display = PreprocessingDisplay(dataset_name, configuration_name, len(dataset), self.verbose)
             with display:
-                return self._run_internal(dataset_name_or_id, configuration_name, plans_identifier, num_processes, display)
+                return self._run_internal(dataset_name_or_id, configuration_name, plans_identifier, num_processes, display, resume)
         else:
-            return self._run_internal(dataset_name_or_id, configuration_name, plans_identifier, num_processes, display)
-    
+            return self._run_internal(dataset_name_or_id, configuration_name, plans_identifier, num_processes, display, resume)
+
     def _run_internal(self, dataset_name_or_id: Union[int, str], configuration_name: str, plans_identifier: str,
-                     num_processes: int, display: object):
+                     num_processes: int, display: object, resume: bool = False):
         dataset_name = maybe_convert_to_dataset_name(dataset_name_or_id)
 
         assert isdir(join(nnUNet_raw, dataset_name)), "The requested dataset could not be found in nnUNet_raw"
@@ -389,27 +389,36 @@ class DefaultPreprocessor(object):
 
         output_directory = join(nnUNet_preprocessed, dataset_name, configuration_manager.data_identifier)
 
-        if isdir(output_directory):
+        if not resume and isdir(output_directory):
             shutil.rmtree(output_directory)
-
         maybe_mkdir_p(output_directory)
 
         dataset = get_filenames_of_train_images_and_targets(join(nnUNet_raw, dataset_name), dataset_json)
 
-        # multiprocessing magic.
+        def _case_complete(k):
+            b = join(output_directory, k)
+            return isfile(b + '.b2nd') and isfile(b + '_seg.b2nd') and isfile(b + '.pkl')
+
+        todo = {k: v for k, v in dataset.items() if not _case_complete(k)}
+        skipped = len(dataset) - len(todo)
+
+        if not todo:
+            display.update_cases(len(dataset))
+            display.update_step("Processing cases", 100)
+            display.complete_step("Processing cases")
+            return
+
         r = []
         with multiprocessing.get_context("spawn").Pool(num_processes) as p:
-            remaining = list(range(len(dataset)))
-            # p is pretty nifti. If we kill workers they just respawn but don't do any work.
-            # So we need to store the original pool of workers.
+            remaining = list(range(len(todo)))
             workers = [j for j in p._pool]
-            for k in dataset.keys():
+            for k in todo.keys():
                 r.append(p.starmap_async(self.run_case_save,
-                                         ((join(output_directory, k), dataset[k]['images'], dataset[k]['label'],
+                                         ((join(output_directory, k), todo[k]['images'], todo[k]['label'],
                                            plans_manager, configuration_manager,
                                            dataset_json),)))
 
-            completed_cases = 0
+            completed_cases = skipped
             while len(remaining) > 0:
                 all_alive = all([j.is_alive() for j in workers])
                 if not all_alive:
@@ -421,16 +430,15 @@ class DefaultPreprocessor(object):
                                        'an error message, out of RAM is likely the problem. In that case '
                                        'reducing the number of workers might help')
                 done = [i for i in remaining if r[i].ready()]
-                # get done so that errors can be raised
                 _ = [r[i].get() for i in done]
-                for _ in done:
-                    r[_].get()  # allows triggering errors
+                for i in done:
+                    r[i].get()
                     completed_cases += 1
                     display.update_cases(completed_cases)
                     display.update_step("Processing cases", int(100 * completed_cases / len(dataset)))
                 remaining = [i for i in remaining if i not in done]
                 sleep(0.1)
-        
+
         display.complete_step("Processing cases")
 
     def modify_seg_fn(self, seg: np.ndarray, plans_manager: PlansManager, dataset_json: dict,

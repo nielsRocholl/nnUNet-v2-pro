@@ -139,6 +139,8 @@ def preprocess_entry():
     parser.add_argument('--verbose', required=False, action='store_true',
                         help='Set this to print a lot of stuff. Useful for debugging. Will disable progress bar! '
                              'Recommended for cluster environments')
+    parser.add_argument('--resume', required=False, default=False, action='store_true',
+                        help='Skip cases that already have preprocessed output. Use after OOM or interruption to continue from where you left off.')
     args, unrecognized_args = parser.parse_known_args()
     dataset_ids = _resolve_dataset_ids(args)
     if args.np is None:
@@ -146,7 +148,7 @@ def preprocess_entry():
         np = [default_np[c] if c in default_np.keys() else 4 for c in args.c]
     else:
         np = args.np
-    preprocess(dataset_ids, args.plans_name, configurations=args.c, num_processes=np, verbose=args.verbose)
+    preprocess(dataset_ids, args.plans_name, configurations=args.c, num_processes=np, verbose=args.verbose, resume=args.resume)
 
 
 def plan_and_preprocess_entry():
@@ -225,6 +227,8 @@ def plan_and_preprocess_entry():
     parser.add_argument('--verbose', required=False, action='store_true',
                         help='Set this to print a lot of stuff. Useful for debugging. Will disable progress bar! '
                              'Recommended for cluster environments')
+    parser.add_argument('--resume', required=False, default=False, action='store_true',
+                        help='Skip cases that already have preprocessed output. Use after OOM or interruption to continue from where you left off.')
     args = parser.parse_args()
 
     dataset_ids = _resolve_dataset_ids(args)
@@ -237,7 +241,7 @@ def plan_and_preprocess_entry():
     else:
         np = args.np
     if not args.no_pp:
-        preprocess(dataset_ids, plans_identifier, args.c, np, args.verbose)
+        preprocess(dataset_ids, plans_identifier, args.c, np, args.verbose, resume=args.resume)
 
 
 if __name__ == '__main__':
