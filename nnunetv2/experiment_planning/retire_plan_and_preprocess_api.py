@@ -3,6 +3,8 @@ Retired implementation of plan_experiments() with original print statements.
 Preserved for reference.
 """
 
+from typing import List, Optional, Tuple
+
 
 def plan_experiments_original(dataset_ids: List[int], experiment_planner_class_name: str = 'ExperimentPlanner',
                      gpu_memory_target_in_gb: float = None, preprocess_class_name: str = 'DefaultPreprocessor',
