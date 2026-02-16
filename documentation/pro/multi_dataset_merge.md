@@ -5,7 +5,7 @@ Merge multiple nnUNet datasets into one for joint fingerprint, planning, and pre
 ## Usage
 
 ```bash
-nnUNetv2_plan_and_preprocess -d 1 2 3 4 5 --merge -o 999
+nnUNetv2_plan_and_preprocess -d 1 2 3 4 5 --merge -o 999 -pl nnUNetPlannerResEncL -c 3d_fullres
 ```
 
 - `-d` — source dataset IDs to merge
@@ -34,8 +34,8 @@ nnUNetv2_preprocess -d 999 -c 3d_fullres 3d_lowres
 
 ## Training
 
-After preprocessing, train on the merged dataset as usual:
+After preprocessing, train on the merged dataset as usual. Use `-p nnUNetResEncUNetLPlans` when ResEnc L was used for planning:
 
 ```bash
-nnUNetv2_train 999 3d_fullres 0
+nnUNetv2_train 999 3d_fullres 0 -p nnUNetResEncUNetLPlans
 ```

@@ -261,6 +261,9 @@ class FingerprintDisplay:
         if not self.verbose and self.progress and self.case_task_id is not None:
             self.progress.update(self.case_task_id, completed=completed, description=f"Cases: {completed}/{self.num_cases}")
 
+    def show_info(self, message: str, style: str = "yellow"):
+        self.console.print(f"[{style}]{message}[/{style}]")
+
     def show_summary(self, fingerprint: Dict[str, Any]):
         table = Table(title="Fingerprint Summary", box=box.ROUNDED, show_header=False)
         table.add_column("Property", style="cyan", no_wrap=True)

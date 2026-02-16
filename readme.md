@@ -49,6 +49,41 @@ A complete prompt-aware extension for lesion segmentation:
 
 See [documentation/pro/prompt_aware_guide.md](documentation/pro/prompt_aware_guide.md) for detailed usage.
 
+## Command Examples
+
+Recommended workflow combining ResEnc L, multi-dataset merge, and ROI-prompted segmentation:
+
+### 1. Plan and preprocess (ResEnc L, fullres only)
+
+```bash
+nnUNetv2_plan_and_preprocess -d DATASET_ID -pl nnUNetPlannerResEncL -c 3d_fullres -npfp 24 -np 24
+```
+
+### 2. Merge multiple datasets, then plan and preprocess
+
+```bash
+nnUNetv2_plan_and_preprocess -d 10 11 12 --merge -o 999 -pl nnUNetPlannerResEncL -c 3d_fullres -npfp 24 -np 24
+```
+
+### 3. Train with ROI-prompted segmentation (ResEnc L)
+
+```bash
+nnUNetv2_train DATASET_ID 3d_fullres 0 -tr nnUNetTrainerPromptAware -p nnUNetResEncUNetLPlans \
+  --config tests/fixtures/nnunet_pro_config.json
+```
+
+### 4. ROI inference with point prompts
+
+```bash
+echo '{"points": [[60, 125, 125]], "points_space": "voxel"}' > points.json
+
+nnUNetv2_predict_roi -i $nnUNet_raw/Dataset010/imagesTr -o ./predictions_roi \
+  -m $nnUNet_results/Dataset010/nnUNetTrainerPromptAware__nnUNetResEncUNetLPlans__3d_fullres \
+  -f 0 --points_json points.json
+```
+
+---
+
 ## Getting Started
 
 For installation, dataset conversion, and usage instructions, refer to the [original nnU-Net v2 documentation](https://github.com/MIC-DKFZ/nnUNet).
@@ -57,6 +92,7 @@ For installation, dataset conversion, and usage instructions, refer to the [orig
 - [ROI-Prompted Segmentation Guide](documentation/pro/prompt_aware_guide.md) - Train and run inference with point prompts
 - [Weights & Biases Integration Guide](documentation/pro/wandb_integration.md) - Track your experiments with wandb
 - [Multi-Dataset Merge](documentation/pro/multi_dataset_merge.md) - Merge datasets without copying raw files
+- [Quality Check: Pro + ResEnc L](documentation/pro/quality_check_resenc_compatibility.md) - Compatibility verification
 
 ## Citation
 

@@ -54,18 +54,18 @@ All tunable parameters live in a single JSON config. Use `tests/fixtures/nnunet_
 
 ### 1. Standard preprocessing
 
-Run nnU-Net preprocessing as usual:
+Run nnU-Net preprocessing as usual. ResEnc L is recommended:
 
 ```bash
-nnUNetv2_plan_and_preprocess -d DATASET_ID
+nnUNetv2_plan_and_preprocess -d DATASET_ID -pl nnUNetPlannerResEncL -c 3d_fullres
 ```
 
 ### 2. Train with nnUNetTrainerPromptAware
 
-You must provide a config file via `--config`:
+You must provide a config file via `--config`. Use `-p nnUNetResEncUNetLPlans` when preprocessing used ResEnc L:
 
 ```bash
-nnUNetv2_train DATASET_ID 3d_fullres FOLD -tr nnUNetTrainerPromptAware \
+nnUNetv2_train DATASET_ID 3d_fullres FOLD -tr nnUNetTrainerPromptAware -p nnUNetResEncUNetLPlans \
   --config path/to/nnunet_pro_config.json
 ```
 
@@ -129,7 +129,7 @@ nnUNetv2_predict_roi -i INPUT_FOLDER -o OUTPUT_FOLDER -m MODEL_FOLDER \
 echo '{"points": [[60, 125, 125]], "points_space": "voxel"}' > points.json
 
 nnUNetv2_predict_roi -i $nnUNet_raw/Dataset010/imagesTr -o ./predictions_roi \
-  -m $nnUNet_results/Dataset010/nnUNetTrainerPromptAware__nnUNetPlans__3d_fullres \
+  -m $nnUNet_results/Dataset010/nnUNetTrainerPromptAware__nnUNetResEncUNetLPlans__3d_fullres \
   -f 0 --points_json points.json
 ```
 
