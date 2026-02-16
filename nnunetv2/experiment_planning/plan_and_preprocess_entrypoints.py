@@ -43,6 +43,8 @@ def extract_fingerprint_entry():
     parser.add_argument("--verify_dataset_integrity", required=False, default=False, action="store_true",
                         help="[RECOMMENDED] set this flag to check the dataset integrity. This is useful and should be done once for "
                              "each dataset!")
+    parser.add_argument("--reject_failing_cases", required=False, default=False, action="store_true",
+                        help="Move cases that fail integrity (spacing/origin mismatch) to imagesTr_rejected/labelsTr_rejected in their dataset folder and continue.")
     parser.add_argument("--clean", required=False, default=False, action="store_true",
                         help='[OPTIONAL] Set this flag to overwrite existing fingerprints. If this flag is not set and a '
                              'fingerprint already exists, the fingerprint extractor will not run.')
@@ -55,7 +57,7 @@ def extract_fingerprint_entry():
                              'Recommended for cluster environments')
     args, unrecognized_args = parser.parse_known_args()
     dataset_ids = _resolve_dataset_ids(args)
-    extract_fingerprints(dataset_ids, args.fpe, args.np, args.verify_dataset_integrity, args.clean, args.verbose)
+    extract_fingerprints(dataset_ids, args.fpe, args.np, args.verify_dataset_integrity, args.reject_failing_cases, args.clean, args.verbose)
 
 
 def plan_experiment_entry():
@@ -161,6 +163,8 @@ def plan_and_preprocess_entry():
     parser.add_argument("--verify_dataset_integrity", required=False, default=False, action="store_true",
                         help="[RECOMMENDED] set this flag to check the dataset integrity. This is useful and should be done once for "
                              "each dataset!")
+    parser.add_argument("--reject_failing_cases", required=False, default=False, action="store_true",
+                        help="Move cases that fail integrity (spacing/origin mismatch) to imagesTr_rejected/labelsTr_rejected in their dataset folder and continue.")
     parser.add_argument('--no_pp', default=False, action='store_true', required=False,
                         help='[OPTIONAL] Set this to only run fingerprint extraction and experiment planning (no '
                              'preprocesing). Useful for debugging.')
@@ -224,7 +228,7 @@ def plan_and_preprocess_entry():
     args = parser.parse_args()
 
     dataset_ids = _resolve_dataset_ids(args)
-    extract_fingerprints(dataset_ids, args.fpe, args.npfp, args.verify_dataset_integrity, args.clean, args.verbose)
+    extract_fingerprints(dataset_ids, args.fpe, args.npfp, args.verify_dataset_integrity, args.reject_failing_cases, args.clean, args.verbose)
     plans_identifier = plan_experiments(dataset_ids, args.pl, args.gpu_memory_target, args.preprocessor_name,
                                         args.overwrite_target_spacing, args.overwrite_plans_name, args.verbose)
     if args.np is None:

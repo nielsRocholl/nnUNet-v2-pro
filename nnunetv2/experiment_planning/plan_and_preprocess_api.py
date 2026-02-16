@@ -20,32 +20,28 @@ def extract_fingerprint_dataset(dataset_id: int,
                                 fingerprint_extractor_class: Type[
                                     DatasetFingerprintExtractor] = DatasetFingerprintExtractor,
                                 num_processes: int = default_num_processes, check_dataset_integrity: bool = False,
-                                clean: bool = True, verbose: bool = True):
+                                reject_failing_cases: bool = False, clean: bool = True, verbose: bool = True):
     """
     Returns the fingerprint as a dictionary (additionally to saving it)
     """
     from nnunetv2.utilities.cli_display import FingerprintDisplay
-    
+
     dataset_name = convert_id_to_dataset_name(dataset_id)
-    
+    folder = join(nnUNet_raw, dataset_name)
+
+    if check_dataset_integrity or reject_failing_cases:
+        verify_dataset_integrity(folder, num_processes, display=None,
+                                reject_failing_cases=reject_failing_cases)
+
     fpe = fingerprint_extractor_class(dataset_id, num_processes, verbose=verbose)
-    
     display = FingerprintDisplay(dataset_name, len(fpe.dataset), verbose)
-    
     with display:
-        if check_dataset_integrity:
-            display.update_step("Verifying dataset integrity", 50)
-            verify_dataset_integrity(join(nnUNet_raw, dataset_name), num_processes, display=display)
-            display.complete_step("Verifying dataset integrity")
-        else:
-            display.complete_step("Verifying dataset integrity")
-        
         return fpe._run_internal(overwrite_existing=clean, display=display)
 
 
 def extract_fingerprints(dataset_ids: List[int], fingerprint_extractor_class_name: str = 'DatasetFingerprintExtractor',
                          num_processes: int = default_num_processes, check_dataset_integrity: bool = False,
-                         clean: bool = True, verbose: bool = True):
+                         reject_failing_cases: bool = False, clean: bool = True, verbose: bool = True):
     """
     clean = False will not actually run this. This is just a switch for use with nnUNetv2_plan_and_preprocess where
     we don't want to rerun fingerprint extraction every time.
@@ -57,8 +53,8 @@ def extract_fingerprints(dataset_ids: List[int], fingerprint_extractor_class_nam
         names = [convert_id_to_dataset_name(d) for d in dataset_ids]
         Console().print(f"[bold]Processing {len(dataset_ids)} datasets:[/bold] {', '.join(names)}\n")
     for d in dataset_ids:
-        extract_fingerprint_dataset(d, fingerprint_extractor_class, num_processes, check_dataset_integrity, clean,
-                                    verbose)
+        extract_fingerprint_dataset(d, fingerprint_extractor_class, num_processes, check_dataset_integrity,
+                                    reject_failing_cases, clean, verbose)
 
 
 def plan_experiment_dataset(dataset_id: int,

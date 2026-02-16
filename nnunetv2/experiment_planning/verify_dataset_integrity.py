@@ -13,6 +13,9 @@
 #    See the License for the specific language governing permissions and
 #    limitations under the License.
 import multiprocessing
+import shutil
+from os.path import basename
+from pathlib import Path
 from typing import Type, Optional
 
 import numpy as np
@@ -24,6 +27,8 @@ from nnunetv2.imageio.reader_writer_registry import determine_reader_writer_from
 from nnunetv2.paths import nnUNet_raw
 from nnunetv2.utilities.label_handling.label_handling import LabelManager
 from nnunetv2.utilities.utils import get_filenames_of_train_images_and_targets
+
+_GEOM_RTOL, _GEOM_ATOL = 1e-3, 1e-4
 
 
 def verify_labels(label_file: str, readerclass: Type[BaseReaderWriter], expected_labels: List[int]) -> bool:
@@ -70,7 +75,7 @@ def check_cases(image_files: List[str], label_file: str, expected_num_channels: 
             f'Spacing dimension mismatch: images {len(spacing_images)}D vs seg {len(spacing_seg)}D. '
             f'Spacing images: {spacing_images}. Spacing seg: {spacing_seg}. Images: {image_files}. Seg: {label_file}'
         )
-    elif not np.allclose(spacing_seg, spacing_images):
+    elif not np.allclose(spacing_seg, spacing_images, rtol=_GEOM_RTOL, atol=_GEOM_ATOL):
         errors.append(
             f'Spacing mismatch: images {spacing_images} vs seg {spacing_seg}. Images: {image_files}. Seg: {label_file}'
         )
@@ -85,7 +90,7 @@ def check_cases(image_files: List[str], label_file: str, expected_num_channels: 
         # this image was read with NibabelIO
         affine_image = properties_image['nibabel_stuff']['original_affine']
         affine_seg = properties_seg['nibabel_stuff']['original_affine']
-        if not np.allclose(affine_image, affine_seg):
+        if not np.allclose(affine_image, affine_seg, rtol=_GEOM_RTOL, atol=_GEOM_ATOL):
             errors.append(
                 f'[WARNING] Affine mismatch. Images: {image_files}. Seg: {label_file}'
             )
@@ -96,13 +101,13 @@ def check_cases(image_files: List[str], label_file: str, expected_num_channels: 
         # spacing has already been checked, only check direction and origin
         origin_image = properties_image['sitk_stuff']['origin']
         origin_seg = properties_seg['sitk_stuff']['origin']
-        if not np.allclose(origin_image, origin_seg):
+        if not np.allclose(origin_image, origin_seg, rtol=_GEOM_RTOL, atol=_GEOM_ATOL):
             errors.append(
                 f'[WARNING] Origin mismatch. Images: {image_files}. Seg: {label_file}'
             )
         direction_image = properties_image['sitk_stuff']['direction']
         direction_seg = properties_seg['sitk_stuff']['direction']
-        if not np.allclose(direction_image, direction_seg):
+        if not np.allclose(direction_image, direction_seg, rtol=_GEOM_RTOL, atol=_GEOM_ATOL):
             errors.append(
                 f'[WARNING] Direction mismatch. Images: {image_files}. Seg: {label_file}'
             )
@@ -111,7 +116,8 @@ def check_cases(image_files: List[str], label_file: str, expected_num_channels: 
     return (not has_error, errors)
 
 
-def verify_dataset_integrity(folder: str, num_processes: int = 8, display: Optional[object] = None) -> None:
+def verify_dataset_integrity(folder: str, num_processes: int = 8, display: Optional[object] = None,
+                            reject_failing_cases: bool = False) -> None:
     """
     folder needs the imagesTr, imagesTs and labelsTr subfolders. There also needs to be a dataset.json
     checks if the expected number of training cases and labels are present
@@ -224,8 +230,34 @@ def verify_dataset_integrity(folder: str, num_processes: int = 8, display: Optio
                     display.add_message(msg, "warning")
                 else:
                     print(msg)
-            raise RuntimeError(
-                'Dataset integrity check failed. See errors above.')
+            if reject_failing_cases:
+                failing_indices = [i for i, r in enumerate(results) if not r[0]]
+                failing_keys = [list(dataset.keys())[i] for i in failing_indices]
+                for case_key in failing_keys:
+                    entry = dataset[case_key]
+                    label_path = entry['label']
+                    image_paths = entry['images']
+                    ds_folder = Path(label_path).parent.parent
+                    maybe_mkdir_p(join(str(ds_folder), "imagesTr_rejected"))
+                    maybe_mkdir_p(join(str(ds_folder), "labelsTr_rejected"))
+                    for img in image_paths:
+                        if isfile(img):
+                            shutil.move(img, join(str(ds_folder), "imagesTr_rejected", basename(img)))
+                    if isfile(label_path):
+                        shutil.move(label_path, join(str(ds_folder), "labelsTr_rejected", basename(label_path)))
+                    if display is not None:
+                        display.add_message(f"Rejected case {case_key}", "warning")
+                    else:
+                        print(f"Rejected case {case_key}")
+                if 'dataset' in dataset_json.keys():
+                    for k in failing_keys:
+                        del dataset_json['dataset'][k]
+                    dataset_json['numTraining'] = len(dataset_json['dataset'])
+                else:
+                    dataset_json['numTraining'] = expected_num_training - len(failing_keys)
+                save_json(dataset_json, join(folder, "dataset.json"), sort_keys=False)
+            else:
+                raise RuntimeError('Dataset integrity check failed. See errors above.')
 
     # check for nans
     # check all same orientation nibabel

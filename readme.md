@@ -34,6 +34,13 @@ See the [wandb integration guide](documentation/pro/wandb_integration.md) for de
 
 See [documentation/pro/multi_dataset_merge.md](documentation/pro/multi_dataset_merge.md) for usage.
 
+### Dataset Integrity Verification
+- **`--verify_dataset_integrity`** — Check image/label geometry (spacing, origin, direction) before preprocessing
+- **`--reject_failing_cases`** — Move failing cases to `imagesTr_rejected`/`labelsTr_rejected` and continue
+- Relaxed tolerances for small float differences (e.g. `0.8` vs `0.80004883`) to avoid false positives
+
+See [documentation/pro/dataset_integrity.md](documentation/pro/dataset_integrity.md) for usage.
+
 ### ROI-Prompted Segmentation (Steps 1–8)
 
 A complete prompt-aware extension for lesion segmentation:
@@ -92,6 +99,7 @@ For installation, dataset conversion, and usage instructions, refer to the [orig
 - [ROI-Prompted Segmentation Guide](documentation/pro/prompt_aware_guide.md) - Train and run inference with point prompts
 - [Weights & Biases Integration Guide](documentation/pro/wandb_integration.md) - Track your experiments with wandb
 - [Multi-Dataset Merge](documentation/pro/multi_dataset_merge.md) - Merge datasets without copying raw files
+- [Dataset Integrity Verification](documentation/pro/dataset_integrity.md) - Verify geometry and optionally reject failing cases
 - [Quality Check: Pro + ResEnc L](documentation/pro/quality_check_resenc_compatibility.md) - Compatibility verification
 
 ## Citation
