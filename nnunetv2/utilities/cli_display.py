@@ -392,6 +392,9 @@ class PreprocessingDisplay:
         if not self.verbose and self.progress and self.case_task_id is not None:
             self.progress.update(self.case_task_id, completed=completed, description=f"Cases: {completed}/{self.num_cases}")
 
+    def show_info(self, message: str, style: str = "yellow"):
+        self.console.print(f"[{style}]{message}[/{style}]")
+
 
 class TrainingDisplay:
     def __init__(self, dataset_name: str, configuration: str, fold: int, num_epochs: int, device: str, verbose: bool = False, trainer=None):
