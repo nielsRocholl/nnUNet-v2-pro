@@ -11,11 +11,11 @@ from nnunetv2.training.nnUNetTrainer.variants.network_architecture.nnUNetTrainer
     nnUNetTrainerPromptChannel,
 )
 from nnunetv2.utilities.default_n_proc_DA import get_allowed_n_proc_DA
-from nnunetv2.utilities.roi_config import load_config
+from nnunetv2.utilities.roi_config import DEFAULT_CONFIG_PATH, load_config
 
 
 class nnUNetTrainerPromptAware(nnUNetTrainerPromptChannel):
-    """Wires prompt-aware dataloader into training. Requires config_path."""
+    """Wires prompt-aware dataloader into training. Uses bundled default config when config_path is not provided."""
 
     def __init__(
         self,
@@ -33,7 +33,7 @@ class nnUNetTrainerPromptAware(nnUNetTrainerPromptChannel):
         config_path: str = None,
     ):
         if config_path is None or config_path == "":
-            raise ValueError("config_path is required for nnUNetTrainerPromptAware")
+            config_path = str(DEFAULT_CONFIG_PATH)
         super().__init__(
             plans,
             configuration,

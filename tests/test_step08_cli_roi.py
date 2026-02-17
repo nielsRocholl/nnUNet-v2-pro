@@ -69,18 +69,19 @@ def test_roi_cli_points_json_required():
     sys.argv = old_argv
 
 
-def test_training_cli_config_required_for_prompt_aware():
-    """get_trainer_from_args must raise when nnUNetTrainerPromptAware and no config_path."""
+def test_training_cli_works_without_config_for_prompt_aware():
+    """get_trainer_from_args works with nnUNetTrainerPromptAware when config_path is None (uses default)."""
     if not os.path.isfile(PLANS_PATH):
         pytest.skip("nnUNetPlans.json not found")
-    with pytest.raises(ValueError, match="--config is required"):
-        get_trainer_from_args(
-            "Dataset010",
-            "3d_fullres",
-            0,
-            trainer_name="nnUNetTrainerPromptAware",
-            config_path=None,
-        )
+    trainer = get_trainer_from_args(
+        "Dataset010",
+        "3d_fullres",
+        0,
+        trainer_name="nnUNetTrainerPromptAware",
+        config_path=None,
+    )
+    assert trainer.roi_cfg is not None
+    assert trainer.roi_cfg.prompt.encoding == "edt"
 
 
 def test_training_accepts_config_for_prompt_aware():

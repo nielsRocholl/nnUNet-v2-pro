@@ -5,6 +5,8 @@ from typing import Literal, Optional, Tuple
 
 from batchgenerators.utilities.file_and_folder_operations import load_json
 
+DEFAULT_CONFIG_PATH = Path(__file__).parent / "nnunet_pro_config.json"
+
 
 @dataclass(frozen=True)
 class LargeLesionConfig:

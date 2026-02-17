@@ -57,9 +57,6 @@ def get_trainer_from_args(dataset_name_or_id: Union[int, str],
     assert issubclass(nnunet_trainer, nnUNetTrainer), 'The requested nnunet trainer class must inherit from ' \
                                                     'nnUNetTrainer'
 
-    if trainer_name == 'nnUNetTrainerPromptAware' and (config_path is None or config_path == ''):
-        raise ValueError('--config is required for nnUNetTrainerPromptAware. Provide path to ROI config JSON.')
-
     # handle dataset input. If it's an ID we need to convert to int from string
     if dataset_name_or_id.startswith('Dataset'):
         pass
@@ -273,7 +270,7 @@ def run_training_entry():
     parser.add_argument('-tr', type=str, required=False, default='nnUNetTrainer',
                         help='[OPTIONAL] Use this flag to specify a custom trainer. Default: nnUNetTrainer')
     parser.add_argument('--config', type=str, required=False, default=None,
-                        help='[REQUIRED for nnUNetTrainerPromptAware] Path to ROI config JSON.')
+                        help='[OPTIONAL for nnUNetTrainerPromptAware] Path to ROI config JSON. Default: bundled config (EDT encoding).')
     parser.add_argument('--epochs', type=int, required=False, default=None,
                         help='[OPTIONAL] Override number of training epochs (for overfit testing).')
     parser.add_argument('-p', type=str, required=False, default='nnUNetPlans',

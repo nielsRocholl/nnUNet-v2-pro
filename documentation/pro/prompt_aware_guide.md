@@ -62,7 +62,13 @@ nnUNetv2_plan_and_preprocess -d DATASET_ID -pl nnUNetPlannerResEncL -c 3d_fullre
 
 ### 2. Train with nnUNetTrainerPromptAware
 
-You must provide a config file via `--config`. Use `-p nnUNetResEncUNetLPlans` when preprocessing used ResEnc L:
+Use `-p nnUNetResEncUNetLPlans` when preprocessing used ResEnc L. `--config` is optional; when omitted, the bundled default (EDT encoding) is used:
+
+```bash
+nnUNetv2_train DATASET_ID 3d_fullres FOLD -tr nnUNetTrainerPromptAware -p nnUNetResEncUNetLPlans
+```
+
+With a custom config:
 
 ```bash
 nnUNetv2_train DATASET_ID 3d_fullres FOLD -tr nnUNetTrainerPromptAware -p nnUNetResEncUNetLPlans \

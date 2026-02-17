@@ -92,27 +92,20 @@ def _get_trainer(device=None, config_path=None):
     )
 
 
-def test_trainer_requires_config_path():
+def test_trainer_uses_default_config_when_none():
     if not os.path.isfile(PLANS_PATH):
         pytest.skip("nnUNetPlans.json not found")
     plans = load_json(PLANS_PATH)
     dataset_json = load_json(join(os.path.dirname(PREPROCESSED_DIR_FULLRES), "dataset.json"))
-    with pytest.raises(ValueError, match="config_path"):
-        nnUNetTrainerPromptAware(
-            plans=plans,
-            configuration="3d_fullres",
-            fold=0,
-            dataset_json=dataset_json,
-            config_path=None,
-        )
-    with pytest.raises(ValueError, match="config_path"):
-        nnUNetTrainerPromptAware(
-            plans=plans,
-            configuration="3d_fullres",
-            fold=0,
-            dataset_json=dataset_json,
-            config_path="",
-        )
+    trainer = nnUNetTrainerPromptAware(
+        plans=plans,
+        configuration="3d_fullres",
+        fold=0,
+        dataset_json=dataset_json,
+        config_path=None,
+    )
+    assert trainer.roi_cfg is not None
+    assert trainer.roi_cfg.prompt.encoding == "edt"
 
 
 def test_trainer_instantiation():

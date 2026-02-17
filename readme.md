@@ -82,9 +82,10 @@ nnUNetv2_plan_and_preprocess -d 10 11 12 --merge -o 999 -pl nnUNetPlannerResEncL
 ### 3. Train with ROI-prompted segmentation (ResEnc L)
 
 ```bash
-nnUNetv2_train DATASET_ID 3d_fullres 0 -tr nnUNetTrainerPromptAware -p nnUNetResEncUNetLPlans \
-  --config tests/fixtures/nnunet_pro_config.json
+nnUNetv2_train DATASET_ID 3d_fullres 0 -tr nnUNetTrainerPromptAware -p nnUNetResEncUNetLPlans
 ```
+
+Use `--config path/to/config.json` to override the bundled default.
 
 ### 4. ROI inference with point prompts
 
