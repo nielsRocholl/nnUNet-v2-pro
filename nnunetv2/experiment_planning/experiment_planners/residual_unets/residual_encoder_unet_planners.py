@@ -79,6 +79,11 @@ class ResEncUNetPlanner(ExperimentPlanner):
         # todo patch size can still get too large because we pad the patch size to a multiple of 2**n
         initial_patch_size = np.array([min(i, j) for i, j in zip(initial_patch_size, median_shape[:len(spacing)])])
 
+        max_ps = getattr(self, 'max_patch_size_in_voxels', None)
+        if max_ps is not None:
+            max_ps = np.array(max_ps)[:len(initial_patch_size)]
+            initial_patch_size = np.array([min(i, m) for i, m in zip(initial_patch_size, max_ps)])
+
         # use that to get the network topology. Note that this changes the patch_size depending on the number of
         # pooling operations (must be divisible by 2**num_pool in each axis)
         network_num_pool_per_axis, pool_op_kernel_sizes, conv_kernel_sizes, patch_size, \

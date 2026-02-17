@@ -61,7 +61,8 @@ def plan_experiment_dataset(dataset_id: int,
                             experiment_planner_class: Type[ExperimentPlanner] = ExperimentPlanner,
                             gpu_memory_target_in_gb: float = None, preprocess_class_name: str = 'DefaultPreprocessor',
                             overwrite_target_spacing: Optional[Tuple[float, ...]] = None,
-                            overwrite_plans_name: Optional[str] = None, verbose: bool = False) -> Tuple[dict, str]:
+                            overwrite_plans_name: Optional[str] = None, verbose: bool = False,
+                            max_patch_size_in_voxels: Optional[Tuple[int, int, int]] = None) -> Tuple[dict, str]:
     """
     overwrite_target_spacing ONLY applies to 3d_fullres and 3d_cascade fullres!
     """
@@ -78,6 +79,8 @@ def plan_experiment_dataset(dataset_id: int,
                                        suppress_transpose=False,  # might expose this later,
                                        **kwargs
                                        )
+    if max_patch_size_in_voxels is not None:
+        planner.max_patch_size_in_voxels = max_patch_size_in_voxels
     ret = planner.plan_experiment(verbose=verbose)
     return ret, planner.plans_identifier
 
@@ -85,7 +88,8 @@ def plan_experiment_dataset(dataset_id: int,
 def plan_experiments(dataset_ids: List[int], experiment_planner_class_name: str = 'ExperimentPlanner',
                      gpu_memory_target_in_gb: float = None, preprocess_class_name: str = 'DefaultPreprocessor',
                      overwrite_target_spacing: Optional[Tuple[float, ...]] = None,
-                     overwrite_plans_name: Optional[str] = None, verbose: bool = False):
+                     overwrite_plans_name: Optional[str] = None, verbose: bool = False,
+                     max_patch_size_in_voxels: Optional[Tuple[int, int, int]] = None):
     """
     overwrite_target_spacing ONLY applies to 3d_fullres and 3d_cascade fullres!
     """
@@ -108,7 +112,8 @@ def plan_experiments(dataset_ids: List[int], experiment_planner_class_name: str 
     for d in dataset_ids:
         _, plans_identifier = plan_experiment_dataset(d, experiment_planner, gpu_memory_target_in_gb,
                                                       preprocess_class_name,
-                                                      overwrite_target_spacing, overwrite_plans_name, verbose)
+                                                      overwrite_target_spacing, overwrite_plans_name, verbose,
+                                                      max_patch_size_in_voxels)
     return plans_identifier
 
 

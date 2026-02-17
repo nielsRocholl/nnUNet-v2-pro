@@ -95,6 +95,8 @@ def plan_experiment_entry():
                              'differently named plans file such that the nnunet default plans are not '
                              'overwritten. You will then need to specify your custom plans file with -p whenever '
                              'running other nnunet commands (training, inference etc)')
+    parser.add_argument('-max_patch_size', default=None, nargs=3, type=int, required=False,
+                        help='[OPTIONAL] Cap patch size (D H W). Extra VRAM from gpu_memory_target used for batch size.')
     parser.add_argument('--merge', action='store_true',
                         help='Merge -d datasets into one before processing')
     parser.add_argument('-o', '--output-dataset', type=str, default=None,
@@ -104,8 +106,9 @@ def plan_experiment_entry():
                              'Recommended for cluster environments')
     args, unrecognized_args = parser.parse_known_args()
     dataset_ids = _resolve_dataset_ids(args)
+    max_ps = tuple(args.max_patch_size) if args.max_patch_size else None
     plan_experiments(dataset_ids, args.pl, args.gpu_memory_target, args.preprocessor_name, args.overwrite_target_spacing,
-                     args.overwrite_plans_name, args.verbose)
+                     args.overwrite_plans_name, args.verbose, max_patch_size_in_voxels=max_ps)
 
 
 def preprocess_entry():
@@ -204,6 +207,8 @@ def plan_and_preprocess_entry():
                              'differently named plans file such that the nnunet default plans are not '
                              'overwritten. You will then need to specify your custom plans file with -p whenever '
                              'running other nnunet commands (training, inference etc)')
+    parser.add_argument('-max_patch_size', default=None, nargs=3, type=int, required=False,
+                        help='[OPTIONAL] Cap patch size (D H W). Extra VRAM from gpu_memory_target used for batch size.')
     parser.add_argument('-c', required=False, default=['3d_fullres', '3d_lowres'], nargs='+',
                         help='[OPTIONAL] Configurations for which the preprocessing should be run. Default: 3d_fullres '
                              '3d_lowres. 3d_cascade_fullres does not need to be specified because it uses the data '
@@ -233,8 +238,10 @@ def plan_and_preprocess_entry():
 
     dataset_ids = _resolve_dataset_ids(args)
     extract_fingerprints(dataset_ids, args.fpe, args.npfp, args.verify_dataset_integrity, args.reject_failing_cases, args.clean, args.verbose)
+    max_ps = tuple(args.max_patch_size) if args.max_patch_size else None
     plans_identifier = plan_experiments(dataset_ids, args.pl, args.gpu_memory_target, args.preprocessor_name,
-                                        args.overwrite_target_spacing, args.overwrite_plans_name, args.verbose)
+                                        args.overwrite_target_spacing, args.overwrite_plans_name, args.verbose,
+                                        max_patch_size_in_voxels=max_ps)
     if args.np is None:
         default_np = {"3d_fullres": 4, "3d_lowres": 8}
         np = [default_np[c] if c in default_np.keys() else 4 for c in args.c]
