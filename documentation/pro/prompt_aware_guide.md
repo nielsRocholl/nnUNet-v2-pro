@@ -75,10 +75,10 @@ The config is copied into the model folder as `nnunet_pro_config.json`, so infer
 
 - **Network**: Same architecture as nnU-Net, but with `num_input_channels + 1` (image + prompt).
 - **Training patches**: Sampled with four modes:
-  - **pos** — Patch with lesion; prompt = lesion centroids (or one random foreground voxel if none).
-  - **pos+spurious** — Same as pos, plus `n_spur` spurious points in background.
-  - **pos+no-prompt** — Patch with lesion; prompt channel all zeros.
-  - **negative** — Patch without lesion; prompt = `n_neg` random points (wrong by construction).
+  - **pos**: Patch with lesion, prompt = lesion centroids (or one random foreground voxel if none).
+  - **pos+spurious**: Same as pos, plus `n_spur` spurious points in background.
+  - **pos+no-prompt**: Patch with lesion, prompt channel all zeros.
+  - **negative**: Patch without lesion, prompt = `n_neg` random points (wrong by construction).
 
 `mode_probs` controls the probability of each mode. This teaches the model to use prompts when correct and ignore them when wrong or missing.
 
