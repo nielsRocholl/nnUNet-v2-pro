@@ -154,6 +154,7 @@ class nnUNetROIPredictor(nnUNetPredictor):
             prompt_cfg.encoding,
             device=self.device,
         ).unsqueeze(0)
+        data = data.to(self.device)
         data_with_prompt = torch.cat([data, prompt], dim=0)
         data_padded, slicer_revert = pad_nd_image(
             data_with_prompt, patch_size, "constant", {"value": 0}, True, None
