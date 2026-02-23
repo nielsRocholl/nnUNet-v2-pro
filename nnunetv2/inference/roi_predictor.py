@@ -144,6 +144,8 @@ class nnUNetROIPredictor(nnUNetPredictor):
         cfg: RoiPromptConfig,
         tile_step_size: float,
     ) -> torch.Tensor:
+        self.network = self.network.to(self.device)
+        self.network.eval()
         shape = tuple(data.shape[1:])
         patch_size = tuple(self.configuration_manager.patch_size)
         prompt_cfg = cfg.prompt
