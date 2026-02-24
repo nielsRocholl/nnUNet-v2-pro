@@ -17,11 +17,18 @@ class LargeLesionConfig:
 
 
 @dataclass(frozen=True)
+class PropagatedConfig:
+    sigma_per_axis: Tuple[float, float, float]
+    max_vox: float
+
+
+@dataclass(frozen=True)
 class SamplingConfig:
     mode_probs: Tuple[float, float, float, float]
     n_spur: Tuple[int, int]
     n_neg: Tuple[int, int]
     large_lesion: LargeLesionConfig
+    propagated: PropagatedConfig
 
 
 @dataclass(frozen=True)
@@ -89,6 +96,28 @@ def _load_large_lesion(d: dict) -> LargeLesionConfig:
     return LargeLesionConfig(K=K, K_min=K_min, K_max=K_max, max_extra=max_extra)
 
 
+DEFAULT_SIGMA_PER_AXIS = (2.75, 5.19, 5.40)
+DEFAULT_MAX_VOX = 34.0
+
+
+def _load_propagated(d: dict) -> PropagatedConfig:
+    prop = d.get("propagated")
+    if prop is None:
+        return PropagatedConfig(
+            sigma_per_axis=DEFAULT_SIGMA_PER_AXIS,
+            max_vox=DEFAULT_MAX_VOX,
+        )
+    if not isinstance(prop, dict):
+        raise ValueError(f"propagated must be dict, got {type(prop)}")
+    sigma = prop.get("sigma_per_axis", DEFAULT_SIGMA_PER_AXIS)
+    if isinstance(sigma, (list, tuple)) and len(sigma) == 3:
+        sigma = tuple(float(s) for s in sigma)
+    else:
+        sigma = DEFAULT_SIGMA_PER_AXIS
+    max_vox = float(prop.get("max_vox", DEFAULT_MAX_VOX))
+    return PropagatedConfig(sigma_per_axis=sigma, max_vox=max_vox)
+
+
 def _load_sampling(sampling: dict) -> SamplingConfig:
     mode_probs = _require(sampling, "mode_probs", "Expected list of 4 floats summing to 1.")
     if not isinstance(mode_probs, (list, tuple)) or len(mode_probs) != 4:
@@ -102,7 +131,11 @@ def _load_sampling(sampling: dict) -> SamplingConfig:
     if not isinstance(ll, dict):
         raise ValueError(f"large_lesion must be dict, got {type(ll)}")
     large_lesion = _load_large_lesion(ll)
-    return SamplingConfig(mode_probs=probs, n_spur=n_spur, n_neg=n_neg, large_lesion=large_lesion)
+    propagated = _load_propagated(sampling)
+    return SamplingConfig(
+        mode_probs=probs, n_spur=n_spur, n_neg=n_neg,
+        large_lesion=large_lesion, propagated=propagated,
+    )
 
 
 def _load_inference(inf: Optional[dict]) -> InferenceConfig:

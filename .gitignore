@@ -124,3 +124,6 @@ wandb/
 
 # Test outputs (for visual inspection)
 tests/outputs/
+.venv/
+.pytest_cache/
+.uv.lock

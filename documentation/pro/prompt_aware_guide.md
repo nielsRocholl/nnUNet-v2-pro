@@ -31,7 +31,8 @@ All tunable parameters live in a single JSON config. Use `tests/fixtures/nnunet_
     "mode_probs": [0.5, 0.2, 0.15, 0.15],
     "n_spur": [1, 2],
     "n_neg": [1, 3],
-    "large_lesion": {"K": 2, "K_min": 1, "K_max": 4, "max_extra": 3}
+    "large_lesion": {"K": 2, "K_min": 1, "K_max": 4, "max_extra": 3},
+    "propagated": {"sigma_per_axis": [2.75, 5.19, 5.40], "max_vox": 34.0}
   },
   "inference": {
     "tile_step_size": 0.75,
@@ -45,8 +46,10 @@ All tunable parameters live in a single JSON config. Use `tests/fixtures/nnunet_
 | Section | Keys | Purpose |
 |---------|------|---------|
 | `prompt` | `point_radius_vox`, `encoding` (`binary` or `edt`) | How points are encoded into a heatmap |
-| `sampling` | `mode_probs`, `n_spur`, `n_neg`, `large_lesion` | Training patch sampling (see below) |
+| `sampling` | `mode_probs`, `n_spur`, `n_neg`, `large_lesion`, `propagated` | Training patch sampling (see below) |
 | `inference` | `tile_step_size`, `disable_tta_default` | Sliding window step, TTA default |
+
+`sampling.propagated` (optional): `sigma_per_axis` `[σ_z, σ_y, σ_x]`, `max_vox` — offset distribution for simulated propagated prompts (defaults from longitudinal COG analysis).
 
 ---
 
@@ -81,12 +84,12 @@ The config is copied into the model folder as `nnunet_pro_config.json`, so infer
 
 - **Network**: Same architecture as nnU-Net, but with `num_input_channels + 1` (image + prompt).
 - **Training patches**: Sampled with four modes:
-  - **pos**: Patch with lesion, prompt = lesion centroids (or one random foreground voxel if none).
+  - **pos**: Patch with lesion, prompt = simulated propagated (centroid + random offset from propagation error distribution).
   - **pos+spurious**: Same as pos, plus `n_spur` spurious points in background.
   - **pos+no-prompt**: Patch with lesion, prompt channel all zeros.
   - **negative**: Patch without lesion, prompt = `n_neg` random points (wrong by construction).
 
-`mode_probs` controls the probability of each mode. This teaches the model to use prompts when correct and ignore them when wrong or missing.
+`mode_probs` controls the probability of each mode. The propagated offset simulates registration errors (e.g. baseline→follow-up COG propagation) for longitudinal inference. See `sampling.propagated` config.
 
 - **Large lesions**: Lesions larger than the patch get extra positive patches to reduce truncation bias.
 - **Validation**: Uses a zero prompt channel (no real prompts).

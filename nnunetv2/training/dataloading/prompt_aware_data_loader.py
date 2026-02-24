@@ -15,6 +15,7 @@ from nnunetv2.utilities.large_lesion_sampling import (
     is_large_lesion,
     sample_extra_centers_for_large_lesion,
 )
+from nnunetv2.utilities.propagated_prompt_simulation import apply_propagation_offset
 from nnunetv2.utilities.prompt_encoding import (
     encode_points_to_heatmap,
     extract_centroids_from_seg,
@@ -176,6 +177,14 @@ class nnUNetPromptAwareDataLoader(nnUNetDataLoader):
                     if len(les) > 0:
                         idx = np.random.randint(len(les))
                         points = [tuple(int(x) for x in les[idx])]
+                prop = self.cfg.sampling.propagated
+                rng = np.random.default_rng()
+                points = [
+                    apply_propagation_offset(
+                        p, patch_shape, prop.sigma_per_axis, prop.max_vox, rng,
+                    )
+                    for p in points
+                ]
                 heatmap = encode_points_to_heatmap(
                     points, patch_shape,
                     self.cfg.prompt.point_radius_vox, self.cfg.prompt.encoding,
@@ -239,6 +248,14 @@ class nnUNetPromptAwareDataLoader(nnUNetDataLoader):
                     if len(les) > 0:
                         idx = np.random.randint(len(les))
                         points = [tuple(int(x) for x in les[idx])]
+                prop = self.cfg.sampling.propagated
+                rng = np.random.default_rng()
+                points = [
+                    apply_propagation_offset(
+                        p, patch_shape, prop.sigma_per_axis, prop.max_vox, rng,
+                    )
+                    for p in points
+                ]
                 if mode == MODE_POS_SPUR:
                     n_spur = np.random.randint(self.cfg.sampling.n_spur[0], self.cfg.sampling.n_spur[1] + 1)
                     spur = _sample_spurious(seg_crop, n_spur)

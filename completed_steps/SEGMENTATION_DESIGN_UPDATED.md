@@ -17,6 +17,7 @@ Build an ROI-prompted 3D nnU-Net segmentation module. Prompts are optional weak 
 - Required tunable keys:
 - `sampling.mode_probs`, `sampling.n_spur`, `sampling.n_neg`
 - `sampling.large_lesion.K`, `sampling.large_lesion.K_min`, `sampling.large_lesion.K_max`, `sampling.large_lesion.max_extra`
+- `sampling.propagated` (optional): `sigma_per_axis` [σ_z, σ_y, σ_x], `max_vox`. Defaults: [2.75, 5.19, 5.40], 34.0 — from longitudinal COG propagation error analysis (see § 9)
 - `prompt.point_radius_vox`, `prompt.encoding` (`binary|edt`)
 - `inference.disable_tta_default`, `inference.tile_step_size`
 - Non-tunable by config: planned `patch_size` comes from nnU-Net plans.
@@ -113,13 +114,13 @@ Strict mode definitions (authoritative, no prior context required):
 
 1. `pos`:
 - Condition: \(|L|>0\).
-- Prompts: \(P=C_\Omega\).
-- If \(C_\Omega=\varnothing\): set \(P=\{v^*\}\), where \(v^*\) is one random voxel from \(L\) (fallback positive point).
-- Meaning: clean positive prompt(s), no injected errors.
+- Prompts: \(P=\{\text{perturb}(c) : c \in C_\Omega\}\), where \(\text{perturb}\) samples from the propagation error distribution (anisotropic Gaussian offset, truncated).
+- If \(C_\Omega=\varnothing\): set \(P=\{\text{perturb}(v^*)\}\), where \(v^*\) is one random voxel from \(L\) (fallback positive point).
+- Meaning: simulated propagated prompt(s); training matches longitudinal inference where prompts come from registration propagation.
 
 2. `pos+spurious`:
 - Condition: same positive patch as `pos` (\(|L|>0\)).
-- Prompts: \(P=C_\Omega\cup S\), with \(|S|=n_{\text{spur}}\), where \(n_{\text{spur}}=\texttt{cfg.sampling.n\_spur}\).
+- Prompts: \(P=\{\text{perturb}(c) : c \in C_\Omega\}\cup S\), with \(|S|=n_{\text{spur}}\), where \(n_{\text{spur}}=\texttt{cfg.sampling.n\_spur}\).
 - `spurious` definition: each \(s\in S\) is sampled uniformly from \(B\) (non-lesion voxels), so it is an intentionally wrong positive prompt.
 - Meaning: simulate registration/click noise while keeping true prompt(s) present.
 
@@ -230,3 +231,22 @@ Do:
 Check:
 - `nnunetv2/inference/predict_from_raw_data.py`
 - `temp/LesionLocator/lesionlocator/inference/lesionlocator_segment.py`
+
+### 9) Propagated Prompt Simulation
+High-level:
+- Replace perfect COG prompts with simulated propagated prompts for longitudinal inference.
+
+Do:
+1. Add `apply_propagation_offset` in `nnunetv2/utilities/propagated_prompt_simulation.py`.
+2. Sample offset from anisotropic Gaussian N(0, diag(σ_z², σ_y², σ_x²)), truncate magnitude to `max_vox`, clip to patch bounds.
+3. In pos and pos+spurious modes, apply offset to each centroid before encoding.
+4. Add `sampling.propagated` config: `sigma_per_axis`, `max_vox` (defaults from longitudinal COG analysis).
+
+**Default parameters** (from [scripts/cog_propagation_analysis_report.md](../scripts/cog_propagation_analysis_report.md), longitudinal CT dataset: cog_propagated vs cog_fu):
+- `sigma_per_axis`: [σ_z, σ_y, σ_x] = [2.75, 5.19, 5.40] — per-axis mean absolute offset in voxels. z is smaller (slice direction) because registration typically preserves axial alignment; x,y have larger in-plane drift.
+- `max_vox`: 34.0 — 95th percentile of observed propagation error. Offsets with magnitude > max_vox are rescaled to max_vox (direction preserved). Caps extreme outliers (max observed ≈ 204 vox).
+- The distribution naturally yields: ~25% within 1.4 vox (good prompts), median 3.7 vox, mean 9.25 vox (typical propagated), long tail up to 95th.
+
+Check:
+- [scripts/cog_propagation_analysis_report.md](../scripts/cog_propagation_analysis_report.md)
+- [nnunetv2/utilities/propagated_prompt_simulation.py](../nnunetv2/utilities/propagated_prompt_simulation.py)
