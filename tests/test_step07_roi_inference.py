@@ -294,7 +294,8 @@ def test_step07_visual_output():
     from nnunetv2.utilities.prompt_encoding import encode_points_to_heatmap
 
     prompt = encode_points_to_heatmap(
-        points_zyx, shape, cfg.prompt.point_radius_vox, cfg.prompt.encoding
+        points_zyx, shape, cfg.prompt.point_radius_vox, cfg.prompt.encoding,
+        intensity_scale=cfg.prompt.prompt_intensity_scale,
     ).numpy()
 
     proj_root = Path(__file__).resolve().parent.parent

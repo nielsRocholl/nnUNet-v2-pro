@@ -36,6 +36,7 @@ class PromptConfig:
     point_radius_vox: int
     encoding: Literal["binary", "edt"]
     validation_use_prompt: bool
+    prompt_intensity_scale: float
 
 
 @dataclass(frozen=True)
@@ -65,10 +66,14 @@ def _load_prompt(prompt: dict) -> PromptConfig:
     validation_use_prompt = prompt.get("validation_use_prompt", False)
     if not isinstance(validation_use_prompt, bool):
         raise ValueError(f"validation_use_prompt must be bool, got {type(validation_use_prompt)}")
+    intensity_scale = float(prompt.get("prompt_intensity_scale", 1.0))
+    if intensity_scale <= 0 or intensity_scale > 1:
+        raise ValueError(f"prompt_intensity_scale must be in (0, 1], got {intensity_scale}")
     return PromptConfig(
         point_radius_vox=int(point_radius_vox),
         encoding=encoding,
         validation_use_prompt=validation_use_prompt,
+        prompt_intensity_scale=intensity_scale,
     )
 
 

@@ -7,7 +7,7 @@ from nnunetv2.training.nnUNetTrainer.nnUNetTrainer import nnUNetTrainer
 class nnUNetTrainerPromptChannel(nnUNetTrainer):
     """Adds 1 extra input channel for prompt heatmap (early concatenation, nnInteractive-style)."""
 
-    PROMPT_CHANNELS = 1
+    PROMPT_CHANNELS = 2
 
     @staticmethod
     def build_network_architecture(architecture_class_name: str,

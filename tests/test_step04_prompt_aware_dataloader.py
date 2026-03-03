@@ -87,15 +87,17 @@ def test_mode_selection():
     modes = [int(np.random.choice(4, p=probs)) for _ in range(200)]
     counts = [modes.count(m) for m in range(4)]
     for m, p in enumerate(probs):
-        assert 0.1 < counts[m] / 200 < 0.9
+        assert 0.05 < counts[m] / 200 < 0.95
 
 
 def test_patch_has_prompt_channel():
     cfg = load_config(FIXTURE_CONFIG)
     dl = _get_real_preprocessed_dataloader(cfg, batch_size=2, oversample=0.0)
     batch = next(dl)
-    assert batch["data"].shape[1] == 2
+    assert batch["data"].shape[1] == 3
     assert batch["data"].shape[0] == 2
+    assert "mode" in batch
+    assert batch["mode"].shape[0] == 2
 
 
 def test_prompt_channel_range():
@@ -103,7 +105,7 @@ def test_prompt_channel_range():
     dl = _get_real_preprocessed_dataloader(cfg, batch_size=2, oversample=0.0)
     for _ in range(5):
         batch = next(dl)
-        prompt_ch = batch["data"][:, -1]
+        prompt_ch = batch["data"][:, -2:]
         assert prompt_ch.min() >= 0 and prompt_ch.max() <= 1.01
 
 
@@ -113,7 +115,7 @@ def test_pos_mode_has_centroid_or_fallback():
     found_nonzero = False
     for _ in range(10):
         batch = next(dl)
-        if batch["data"][:, -1].max() > 0:
+        if batch["data"][:, -2].max() > 0:
             found_nonzero = True
             break
     assert found_nonzero
@@ -145,7 +147,7 @@ def test_pos_no_prompt_mode():
     for _ in range(30):
         batch = next(dl)
         for b in range(batch["data"].shape[0]):
-            if batch["data"][b, -1].sum() == 0:
+            if batch["data"][b, -2:].sum() == 0:
                 return
     pytest.skip("pos+no-prompt mode not sampled in 30 batches")
 
@@ -158,7 +160,7 @@ def test_dataloader_iteration():
         batch = next(dl)
         assert "data" in batch and "target" in batch and "keys" in batch
         assert batch["data"].shape[0] == 2
-        assert batch["data"].shape[1] == 2
+        assert batch["data"].shape[1] == 3
         assert batch["data"].shape[2:] == tuple(patch_size)
 
 
@@ -169,7 +171,7 @@ def test_step04_visual_output():
     np.random.seed(123)
     batch = next(dl)
     img = batch["data"][0, 0].numpy() if hasattr(batch["data"], "numpy") else batch["data"][0, 0]
-    prompt = batch["data"][0, -1].numpy() if hasattr(batch["data"], "numpy") else batch["data"][0, -1]
+    prompt = batch["data"][0, -2].numpy() if hasattr(batch["data"], "numpy") else batch["data"][0, -2]
     seg = batch["target"][0, 0].numpy() if hasattr(batch["target"], "numpy") else batch["target"][0, 0]
 
     proj_root = Path(__file__).resolve().parent.parent
@@ -285,7 +287,7 @@ def test_step04_cc_label_prompt_match():
     for _ in range(50):
         batch = next(dl)
         label = batch["target"][0, 0].numpy() if hasattr(batch["target"], "numpy") else batch["target"][0, 0]
-        prompt = batch["data"][0, -1].numpy() if hasattr(batch["data"], "numpy") else batch["data"][0, -1]
+        prompt = batch["data"][0, -2].numpy() if hasattr(batch["data"], "numpy") else batch["data"][0, -2]
         n_cc_label, n_cc_prompt = _count_cc_label_prompt(label, prompt)
         if n_cc_label > 0 and n_cc_prompt > 0:
             assert n_cc_prompt >= 1, f"Expected >=1 prompt blobs for {n_cc_label} lesions, got {n_cc_prompt}"

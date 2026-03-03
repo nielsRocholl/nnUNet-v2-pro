@@ -182,7 +182,7 @@ def test_validation_batch_zero_prompt():
     use_prompt = trainer.roi_cfg.prompt.validation_use_prompt
     for _ in range(5):
         batch = next(dl_val)
-        prompt_ch = batch["data"][:, -1]
+        prompt_ch = batch["data"][:, -2:]
         arr = prompt_ch.numpy() if hasattr(prompt_ch, "numpy") else np.asarray(prompt_ch)
         if not use_prompt:
             assert arr.max() == 0 and arr.min() == 0
@@ -354,9 +354,9 @@ def test_step06_visual_output():
     seg_tr = _to_np(target_tr[0][idx, 0]) if isinstance(target_tr, list) else _to_np(target_tr[idx, 0])
     seg_val = _to_np(target_val[0][idx, 0]) if isinstance(target_val, list) else _to_np(target_val[idx, 0])
     img_tr = _to_np(batch_tr["data"][idx, 0])
-    prompt_tr = _to_np(batch_tr["data"][idx, -1])
+    prompt_tr = _to_np(batch_tr["data"][idx, -2])
     img_val = _to_np(batch_val["data"][idx, 0])
-    prompt_val = _to_np(batch_val["data"][idx, -1])
+    prompt_val = _to_np(batch_val["data"][idx, -2])
 
     try:
         import SimpleITK as sitk

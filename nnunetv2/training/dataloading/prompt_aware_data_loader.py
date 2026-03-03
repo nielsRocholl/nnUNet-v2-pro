@@ -17,7 +17,7 @@ from nnunetv2.utilities.large_lesion_sampling import (
 )
 from nnunetv2.utilities.propagated_prompt_simulation import apply_propagation_offset
 from nnunetv2.utilities.prompt_encoding import (
-    encode_points_to_heatmap,
+    encode_points_to_heatmap_pair,
     extract_centroids_from_seg,
     filter_centroids_in_patch,
 )
@@ -100,8 +100,50 @@ class nnUNetPromptAwareDataLoader(nnUNetDataLoader):
     def determine_shapes(self):
         data_shape, seg_shape = super().determine_shapes()
         c = data_shape[1]
-        new_data_shape = (data_shape[0], c + 1, *data_shape[2:])
+        new_data_shape = (data_shape[0], c + 2, *data_shape[2:])
         return new_data_shape, seg_shape
+
+    def get_bbox(self, data_shape: np.ndarray, force_fg: bool, class_locations, overwrite_class=None, verbose=False):
+        need_to_pad = self.need_to_pad.copy()
+        dim = len(data_shape)
+        for d in range(dim):
+            if need_to_pad[d] + data_shape[d] < self.patch_size[d]:
+                need_to_pad[d] = self.patch_size[d] - data_shape[d]
+        lbs = [-need_to_pad[i] // 2 for i in range(dim)]
+        ubs = [data_shape[i] + need_to_pad[i] // 2 + need_to_pad[i] % 2 - self.patch_size[i] for i in range(dim)]
+
+        if not force_fg and not self.has_ignore:
+            bbox_lbs = [np.random.randint(lbs[i], ubs[i] + 1) for i in range(dim)]
+        else:
+            if not force_fg and self.has_ignore:
+                selected_class = self.annotated_classes_key
+                if class_locations is None or len(class_locations.get(selected_class, [])) == 0:
+                    selected_class = None
+            elif force_fg:
+                assert class_locations is not None
+                eligible = [k for k in class_locations if k != self.annotated_classes_key and len(class_locations[k]) > 0]
+                tmp = [k == self.annotated_classes_key if isinstance(k, tuple) else False for k in eligible]
+                if any(tmp) and len(eligible) > 1:
+                    eligible.pop(np.where(tmp)[0][0])
+                selected_class = eligible[np.random.choice(len(eligible))] if eligible else None
+            else:
+                raise RuntimeError("unexpected branch")
+            if selected_class is not None:
+                voxels = class_locations[selected_class]
+                selected_voxel = voxels[np.random.choice(len(voxels))]
+                bbox_lbs = []
+                for i in range(dim):
+                    v = int(selected_voxel[i + 1])
+                    lo = max(lbs[i], v - self.patch_size[i] + 1)
+                    hi = min(v, ubs[i])
+                    if lo > hi:
+                        bbox_lbs.append(max(lbs[i], v - self.patch_size[i] // 2))
+                    else:
+                        bbox_lbs.append(int(np.random.randint(lo, hi + 1)))
+            else:
+                bbox_lbs = [np.random.randint(lbs[i], ubs[i] + 1) for i in range(dim)]
+        bbox_ubs = [bbox_lbs[i] + self.patch_size[i] for i in range(dim)]
+        return bbox_lbs, bbox_ubs
 
     def _get_bbox_and_mode(
         self,
@@ -185,12 +227,13 @@ class nnUNetPromptAwareDataLoader(nnUNetDataLoader):
                     )
                     for p in points
                 ]
-                heatmap = encode_points_to_heatmap(
-                    points, patch_shape,
+                heatmap_pair = encode_points_to_heatmap_pair(
+                    points, [], patch_shape,
                     self.cfg.prompt.point_radius_vox, self.cfg.prompt.encoding,
                     device=None,
+                    intensity_scale=self.cfg.prompt.prompt_intensity_scale,
                 )
-                data_with_prompt = np.concatenate([data_crop, heatmap.numpy()[None]], axis=0)
+                data_with_prompt = np.concatenate([data_crop, heatmap_pair.numpy()], axis=0)
                 extra_data_list.append(data_with_prompt)
                 extra_seg_list.append(seg_crop)
                 extra_keys_list.append(case_id)
@@ -208,6 +251,7 @@ class nnUNetPromptAwareDataLoader(nnUNetDataLoader):
         selected_keys = self.get_indices()
         data_all = np.zeros(self.data_shape, dtype=np.float32)
         seg_all = np.zeros(self.seg_shape, dtype=np.int16)
+        mode_arr = np.zeros(len(selected_keys), dtype=np.int32)
         prompt_cfg = self.cfg.prompt
 
         for j, i in enumerate(selected_keys):
@@ -233,47 +277,57 @@ class nnUNetPromptAwareDataLoader(nnUNetDataLoader):
             elif mode != MODE_NEG and not _has_lesion(seg_crop):
                 mode = MODE_NEG
 
+            mode_arr[j] = mode
+
             if self.force_zero_prompt:
-                points: List[Tuple[int, int, int]] = []
+                points_pos: List[Tuple[int, int, int]] = []
+                points_neg: List[Tuple[int, int, int]] = []
             elif mode == MODE_POS_NO_PROMPT:
-                points = []
+                points_pos = []
+                points_neg = []
             elif mode == MODE_NEG:
                 n_neg = np.random.randint(self.cfg.sampling.n_neg[0], self.cfg.sampling.n_neg[1] + 1)
-                points = _sample_negative(patch_shape, n_neg)
+                points_neg = _sample_spurious(seg_crop, n_neg)
+                points_pos = []
             else:
                 centroids = extract_centroids_from_seg(seg_crop)
-                points = filter_centroids_in_patch(centroids, patch_slices)
-                if not points:
+                points_pos = filter_centroids_in_patch(centroids, patch_slices)
+                if not points_pos:
                     les = _lesion_voxels(seg_crop)
                     if len(les) > 0:
                         idx = np.random.randint(len(les))
-                        points = [tuple(int(x) for x in les[idx])]
+                        points_pos = [tuple(int(x) for x in les[idx])]
                 prop = self.cfg.sampling.propagated
                 rng = np.random.default_rng()
-                points = [
+                points_pos = [
                     apply_propagation_offset(
                         p, patch_shape, prop.sigma_per_axis, prop.max_vox, rng,
                     )
-                    for p in points
+                    for p in points_pos
                 ]
                 if mode == MODE_POS_SPUR:
                     n_spur = np.random.randint(self.cfg.sampling.n_spur[0], self.cfg.sampling.n_spur[1] + 1)
                     spur = _sample_spurious(seg_crop, n_spur)
-                    points = points + spur
+                    points_pos = points_pos + spur
+                points_neg = []
 
-            heatmap = encode_points_to_heatmap(
-                points, patch_shape,
+            heatmap_pair = encode_points_to_heatmap_pair(
+                points_pos, points_neg, patch_shape,
                 prompt_cfg.point_radius_vox, prompt_cfg.encoding,
                 device=None,
+                intensity_scale=prompt_cfg.prompt_intensity_scale,
             )
-            prompt_np = heatmap.numpy()
-            data_with_prompt = np.concatenate([data_crop, prompt_np[None]], axis=0)
+            prompt_np = heatmap_pair.numpy()
+            data_with_prompt = np.concatenate([data_crop, prompt_np], axis=0)
             data_all[j] = data_with_prompt
             seg_all[j] = seg_crop
 
         if not self.force_zero_prompt:
             extra_data, extra_seg, extra_keys = self._sample_large_lesion_extras(selected_keys)
             if len(extra_keys) > 0:
+                n_extra = len(extra_keys)
+                extra_modes = np.full(n_extra, MODE_POS, dtype=np.int32)
+                mode_arr = np.concatenate([mode_arr, extra_modes])
                 data_all = np.concatenate([data_all, extra_data], axis=0)
                 seg_all = np.concatenate([seg_all, extra_seg], axis=0)
                 selected_keys = list(selected_keys) + extra_keys
@@ -297,5 +351,5 @@ class nnUNetPromptAwareDataLoader(nnUNetDataLoader):
                         seg_all = [torch.stack([s[i] for s in segs]) for i in range(len(segs[0]))]
                     else:
                         seg_all = torch.stack(segs)
-            return {"data": data_all, "target": seg_all, "keys": selected_keys}
-        return {"data": data_all, "target": seg_all, "keys": selected_keys}
+            return {"data": data_all, "target": seg_all, "keys": selected_keys, "mode": mode_arr}
+        return {"data": data_all, "target": seg_all, "keys": selected_keys, "mode": mode_arr}

@@ -27,11 +27,11 @@ def test_trainer_discoverable():
         "nnunetv2.training.nnUNetTrainer",
     )
     assert trainer_class is not None
-    assert trainer_class.PROMPT_CHANNELS == 1
+    assert trainer_class.PROMPT_CHANNELS == 2
 
 
 def test_build_network_adds_prompt_channel():
-    """build_network_architecture(num_input_channels=1) must produce network with 2 input channels."""
+    """build_network_architecture(num_input_channels=1) must produce network with 3 input channels (image + 2 prompt)."""
     trainer_class = recursive_find_python_class(
         join(nnunetv2.__path__[0], "training", "nnUNetTrainer"),
         "nnUNetTrainerPromptChannel",
@@ -67,13 +67,13 @@ def test_build_network_adds_prompt_channel():
 
     first_conv = next(
         m for m in network.modules()
-        if hasattr(m, "weight") and m.weight.dim() == 5 and m.weight.shape[1] == 2
+        if hasattr(m, "weight") and m.weight.dim() == 5 and m.weight.shape[1] == 3
     )
-    assert first_conv.weight.shape[1] == 2, f"Expected 2 input channels, got {first_conv.weight.shape[1]}"
+    assert first_conv.weight.shape[1] == 3, f"Expected 3 input channels (image+2 prompt), got {first_conv.weight.shape[1]}"
 
 
-def test_forward_pass_2channel_input():
-    """Network must accept 2-channel input (image + prompt) and produce valid output."""
+def test_forward_pass_3channel_input():
+    """Network must accept 3-channel input (image + 2 prompt) and produce valid output."""
     trainer_class = recursive_find_python_class(
         join(nnunetv2.__path__[0], "training", "nnUNetTrainer"),
         "nnUNetTrainerPromptChannel",
@@ -107,8 +107,8 @@ def test_forward_pass_2channel_input():
         enable_deep_supervision=False,
     )
 
-    # (batch, channels, d, h, w) — 2 channels: image + prompt
-    x = torch.randn(1, 2, 32, 64, 64)
+    # (batch, channels, d, h, w) — 3 channels: image + pos prompt + neg prompt
+    x = torch.randn(1, 3, 32, 64, 64)
     out = network(x)
     if isinstance(out, (list, tuple)):
         out = out[0]
@@ -126,7 +126,7 @@ def _make_prompt_sphere(shape, center, radius=4):
 
 
 def test_step01_visual_output():
-    """Run forward pass and save NIfTIs for visual inspection (image, prompt, logits, pred)."""
+    """Run forward pass and save NIfTIs for visual inspection (image, pos prompt, neg prompt, logits, pred)."""
     import nibabel as nib
 
     # Persist to tests/outputs/step01 for inspection (not tmp_path)
@@ -170,7 +170,8 @@ def test_step01_visual_output():
     center = (16, 32, 32)
     ch0_image = np.random.randn(*shape).astype(np.float32) * 50 + 100  # CT-like
     ch1_prompt = _make_prompt_sphere(shape, center, radius=4)
-    x = torch.from_numpy(np.stack([ch0_image, ch1_prompt])[None])  # (1, 2, D, H, W)
+    ch2_prompt = np.zeros(shape, dtype=np.float32)  # neg channel zeros at inference
+    x = torch.from_numpy(np.stack([ch0_image, ch1_prompt, ch2_prompt])[None])  # (1, 3, D, H, W)
 
     with torch.no_grad():
         out = network(x)
@@ -184,19 +185,21 @@ def test_step01_visual_output():
         nib.save(img, os.path.join(out_dir, name))
 
     save_nii(ch0_image, "input_ch0_image.nii.gz")
-    save_nii(ch1_prompt, "input_ch1_prompt.nii.gz")
+    save_nii(ch1_prompt, "input_ch1_prompt_pos.nii.gz")
+    save_nii(ch2_prompt, "input_ch2_prompt_neg.nii.gz")
     save_nii(logits[1] - logits[0], "output_logits_fg_minus_bg.nii.gz")
     save_nii(pred, "output_pred.nii.gz")
 
     readme = os.path.join(out_dir, "README.txt")
     with open(readme, "w") as f:
         f.write("Step 1 visual outputs — inspect in CT viewer\n")
-        f.write("input_ch0_image.nii.gz    synthetic CT-like image\n")
-        f.write("input_ch1_prompt.nii.gz   nnInteractive-style sphere prompt [0,1]\n")
+        f.write("input_ch0_image.nii.gz         synthetic CT-like image\n")
+        f.write("input_ch1_prompt_pos.nii.gz     pos prompt [0,1]\n")
+        f.write("input_ch2_prompt_neg.nii.gz     neg prompt (zeros at inference)\n")
         f.write("output_logits_fg_minus_bg.nii.gz  logit difference\n")
         f.write("output_pred.nii.gz        binary prediction\n")
 
     assert os.path.exists(out_dir)
     assert os.path.exists(os.path.join(out_dir, "input_ch0_image.nii.gz"))
-    assert os.path.exists(os.path.join(out_dir, "input_ch1_prompt.nii.gz"))
+    assert os.path.exists(os.path.join(out_dir, "input_ch1_prompt_pos.nii.gz"))
     assert os.path.exists(os.path.join(out_dir, "output_pred.nii.gz"))

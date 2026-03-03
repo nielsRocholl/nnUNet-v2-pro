@@ -8,7 +8,7 @@ from batchgenerators.utilities.file_and_folder_operations import load_json
 from nnunetv2.configuration import default_num_processes
 from nnunetv2.inference.predict_from_raw_data import nnUNetPredictor
 from nnunetv2.inference.sliding_window_prediction import compute_steps_for_sliding_window
-from nnunetv2.utilities.prompt_encoding import encode_points_to_heatmap
+from nnunetv2.utilities.prompt_encoding import encode_points_to_heatmap_pair
 from nnunetv2.utilities.roi_config import RoiPromptConfig
 
 
@@ -149,13 +149,15 @@ class nnUNetROIPredictor(nnUNetPredictor):
         shape = tuple(data.shape[1:])
         patch_size = tuple(self.configuration_manager.patch_size)
         prompt_cfg = cfg.prompt
-        prompt = encode_points_to_heatmap(
+        prompt = encode_points_to_heatmap_pair(
             points_zyx,
+            [],
             shape,
             prompt_cfg.point_radius_vox,
             prompt_cfg.encoding,
             device=self.device,
-        ).unsqueeze(0)
+            intensity_scale=prompt_cfg.prompt_intensity_scale,
+        )
         data = data.to(self.device)
         data_with_prompt = torch.cat([data, prompt], dim=0)
         data_padded, slicer_revert = pad_nd_image(
@@ -163,7 +165,7 @@ class nnUNetROIPredictor(nnUNetPredictor):
         )
         padded_shape = tuple(data_padded.shape[1:])
         slicers = get_prompt_aware_slicers(
-            padded_shape, patch_size, tile_step_size, prompt.to(self.device)
+            padded_shape, patch_size, tile_step_size, prompt[0:1].to(self.device)
         )
         if not slicers:
             return torch.zeros(

@@ -77,8 +77,9 @@ def encode_points_to_heatmap(
     radius_vox: int,
     encoding: str,
     device: Union[torch.device, str, None] = None,
+    intensity_scale: float = 1.0,
 ) -> torch.Tensor:
-    """Build heatmap [0,1] from points. Merge multiple with torch.maximum."""
+    """Build heatmap [0,1] from points. Merge multiple with torch.maximum. Scaled by intensity_scale."""
     heatmap = torch.zeros(shape, dtype=torch.float32, device=device)
     if not points_zyx:
         return heatmap
@@ -102,7 +103,22 @@ def encode_points_to_heatmap(
         strel_slc = (slice(sz0, sz1), slice(sy0, sy1), slice(sx0, sx1))
         patch = strel[strel_slc].to(heatmap.device)
         torch.maximum(heatmap[slc], patch, out=heatmap[slc])
-    return heatmap
+    return heatmap * intensity_scale
+
+
+def encode_points_to_heatmap_pair(
+    points_pos: List[Tuple[int, int, int]],
+    points_neg: List[Tuple[int, int, int]],
+    shape: Tuple[int, int, int],
+    radius_vox: int,
+    encoding: str,
+    device: Union[torch.device, str, None] = None,
+    intensity_scale: float = 1.0,
+) -> torch.Tensor:
+    """Build 2-channel heatmap (pos, neg). Each channel scaled by intensity_scale. Returns (2, D, H, W)."""
+    pos_hm = encode_points_to_heatmap(points_pos, shape, radius_vox, encoding, device, intensity_scale)
+    neg_hm = encode_points_to_heatmap(points_neg, shape, radius_vox, encoding, device, intensity_scale)
+    return torch.stack([pos_hm, neg_hm], dim=0)
 
 
 def build_prompt_channel(
@@ -126,5 +142,6 @@ def build_prompt_channel(
         prompt_cfg.point_radius_vox,
         prompt_cfg.encoding,
         device,
+        prompt_cfg.prompt_intensity_scale,
     )
     return heatmap.unsqueeze(0)

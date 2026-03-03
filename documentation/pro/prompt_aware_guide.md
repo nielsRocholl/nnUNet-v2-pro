@@ -6,7 +6,7 @@ This guide explains the prompt-aware extension added in nnU-Net v2 Pro. It lets 
 
 The extension adds:
 
-1. **Prompt channel** — One extra input channel for a point heatmap (concatenated with the image)
+1. **Prompt channels** — Two extra input channels (pos + neg) for point heatmaps (concatenated with the image)
 2. **Prompt-aware training** — Patches sampled with different prompt conditions (clean, noisy, missing, negative)
 3. **ROI-only inference** — Sliding windows only over a dilated region around the prompt, never full-volume
 
@@ -23,12 +23,13 @@ All tunable parameters live in a single JSON config. Use `tests/fixtures/nnunet_
 ```json
 {
   "prompt": {
-    "point_radius_vox": 5,
-    "encoding": "binary",
-    "validation_use_prompt": true
+    "point_radius_vox": 2,
+    "encoding": "edt",
+    "validation_use_prompt": true,
+    "prompt_intensity_scale": 0.5
   },
   "sampling": {
-    "mode_probs": [0.5, 0.2, 0.15, 0.15],
+    "mode_probs": [0.35, 0.15, 0.15, 0.35],
     "n_spur": [1, 2],
     "n_neg": [1, 3],
     "large_lesion": {"K": 2, "K_min": 1, "K_max": 4, "max_extra": 3},
@@ -45,7 +46,7 @@ All tunable parameters live in a single JSON config. Use `tests/fixtures/nnunet_
 
 | Section | Keys | Purpose |
 |---------|------|---------|
-| `prompt` | `point_radius_vox`, `encoding` (`binary` or `edt`) | How points are encoded into a heatmap |
+| `prompt` | `point_radius_vox`, `encoding` (`binary` or `edt`), `prompt_intensity_scale` (0–1, default 1.0) | How points are encoded into a heatmap; intensity scale reduces over-reliance on prompts |
 | `sampling` | `mode_probs`, `n_spur`, `n_neg`, `large_lesion`, `propagated` | Training patch sampling (see below) |
 | `inference` | `tile_step_size`, `disable_tta_default` | Sliding window step, TTA default |
 
@@ -82,17 +83,19 @@ The config is copied into the model folder as `nnunet_pro_config.json`, so infer
 
 ### 3. What the trainer does
 
-- **Network**: Same architecture as nnU-Net, but with `num_input_channels + 1` (image + prompt).
+- **Network**: Same architecture as nnU-Net, but with `num_input_channels + 2` (image + pos prompt + neg prompt).
 - **Training patches**: Sampled with four modes:
-  - **pos**: Patch with lesion, prompt = simulated propagated (centroid + random offset from propagation error distribution).
+  - **pos**: Patch with lesion, pos prompt = simulated propagated (centroid + random offset from propagation error distribution), neg prompt = zeros.
   - **pos+spurious**: Same as pos, plus `n_spur` spurious points in background.
-  - **pos+no-prompt**: Patch with lesion, prompt channel all zeros.
-  - **negative**: Patch without lesion, prompt = `n_neg` random points (wrong by construction).
+  - **pos+no-prompt**: Patch with lesion, both prompt channels zeros.
+  - **negative**: Patch without lesion, neg prompt = `n_neg` background points (from non-lesion voxels), pos prompt = zeros.
 
-`mode_probs` controls the probability of each mode. The propagated offset simulates registration errors (e.g. baseline→follow-up COG propagation) for longitudinal inference. See `sampling.propagated` config.
+`mode_probs` controls the probability of each mode. Default [0.35, 0.15, 0.15, 0.35] gives 35% background patches to reduce over-segmentation (see inference_dice_investigation.md). The propagated offset simulates registration errors (e.g. baseline→follow-up COG propagation) for longitudinal inference. See `sampling.propagated` config.
+
+- **Patch sampling**: Foreground patches use overlap sampling — the lesion may lie anywhere in the patch, not necessarily centered.
 
 - **Large lesions**: Lesions larger than the patch get extra positive patches to reduce truncation bias.
-- **Validation**: Uses a zero prompt channel (no real prompts).
+- **Validation**: Uses the same patch distribution (mode_probs) and prompts as training when `validation_use_prompt=true`. Per-mode Dice (pos, pos_spur, pos_no_prompt, neg, global) logged to WandB/logger.
 - **Loss**: Standard nnU-Net Dice + cross-entropy.
 
 ---
@@ -147,7 +150,7 @@ If the model was trained with prompt-aware, the config is in the model folder an
 ### How inference works
 
 1. **Preprocessing**: Same as standard nnU-Net (resampling, normalization).
-2. **Prompt heatmap**: Points are encoded into a heatmap (radius `point_radius_vox`, encoding from config).
+2. **Prompt heatmap**: Points are encoded into a 2-channel heatmap (pos + zeros for neg; radius `point_radius_vox`, encoding from config).
 3. **Dilated bbox**: Bbox around prompt extent + `patch_size/2` per axis, clamped to image.
 4. **Sliding windows**: Only windows overlapping this bbox are used.
 5. **Single patch**: If the dilated bbox is smaller than the patch, a single centered patch is used.
