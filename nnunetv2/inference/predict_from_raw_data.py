@@ -31,9 +31,11 @@ from nnunetv2.utilities.file_path_utilities import get_output_folder, check_work
 from nnunetv2.utilities.find_class_by_name import recursive_find_python_class
 from nnunetv2.utilities.helpers import empty_cache, dummy_context
 from nnunetv2.utilities.json_export import recursive_fix_for_json_export
+from nnunetv2.evaluation.evaluate_predictions import compute_dice_from_arrays
 from nnunetv2.utilities.label_handling.label_handling import determine_num_input_channels
 from nnunetv2.utilities.plans_handling.plans_handler import PlansManager, ConfigurationManager
 from nnunetv2.utilities.utils import create_lists_from_splitted_dataset_folder
+from nnunetv2.utilities.cli_display import InferenceDisplay
 
 
 class nnUNetPredictor(object):
@@ -690,9 +692,11 @@ class nnUNetPredictor(object):
                            save_probabilities: bool = False,
                            overwrite: bool = True,
                            folder_with_segs_from_prev_stage: str = None,
-                           display = None):
+                           display=None,
+                           labels_folder: str = None):
         """
-        Just like predict_from_files but doesn't use any multiprocessing. Slow, but sometimes necessary
+        Just like predict_from_files but doesn't use any multiprocessing. Slow, but sometimes necessary.
+        When labels_folder is set, loads GT for DICE computation (display must be provided).
         """
         if isinstance(output_folder_or_list_of_truncated_output_files, str):
             output_folder = output_folder_or_list_of_truncated_output_files
@@ -708,7 +712,7 @@ class nnUNetPredictor(object):
         if output_folder is not None:
             my_init_kwargs = {}
             for k in inspect.signature(self.predict_from_files_sequential).parameters.keys():
-                if k != 'display':  # Exclude display parameter (contains unpicklable objects)
+                if k not in ('display', 'labels_folder'):
                     my_init_kwargs[k] = locals()[k]
             my_init_kwargs = deepcopy(
                 my_init_kwargs)  # let's not unintentionally change anything in-place. Take this as a
@@ -743,7 +747,17 @@ class nnUNetPredictor(object):
         if output_filename_truncated is None:
             output_filename_truncated = [None] * len(list_of_lists_or_source_folder)
         if seg_from_prev_stage_files is None:
-            seg_from_prev_stage_files = [None] * len(seg_from_prev_stage_files)
+            seg_from_prev_stage_files = [None] * len(list_of_lists_or_source_folder)
+
+        caseids = [os.path.basename(li[0])[: -(len(self.dataset_json["file_ending"]) + 5)] for li in list_of_lists_or_source_folder]
+        file_ending = self.dataset_json["file_ending"]
+        if labels_folder:
+            list_of_gt_files = [join(labels_folder, cid + file_ending) if isfile(join(labels_folder, cid + file_ending)) else None for cid in caseids]
+        else:
+            list_of_gt_files = [None] * len(caseids)
+
+        labels_or_regions = label_manager.foreground_regions if label_manager.has_regions else [(l,) for l in label_manager.foreground_labels]
+        ignore_label = label_manager.ignore_label if label_manager.has_ignore_label else None
 
         original_allow_tqdm = self.allow_tqdm
         if display is not None:
@@ -752,15 +766,29 @@ class nnUNetPredictor(object):
         ret = []
         for case_idx, (li, of, sps) in enumerate(zip(list_of_lists_or_source_folder, output_filename_truncated, seg_from_prev_stage_files), 1):
             case_start_time = time_func()
+            seg_file = sps if sps else (list_of_gt_files[case_idx - 1] if list_of_gt_files[case_idx - 1] else None)
             data, seg, data_properties = preprocessor.run_case(
                 li,
-                sps,
+                seg_file,
                 self.plans_manager,
                 self.configuration_manager,
                 self.dataset_json
             )
 
             prediction = self.predict_logits_from_preprocessed_data(torch.from_numpy(data)).cpu()
+
+            dice = None
+            if seg is not None and list_of_gt_files[case_idx - 1]:
+                pred_seg = label_manager.convert_logits_to_segmentation(prediction)
+                if isinstance(pred_seg, torch.Tensor):
+                    pred_seg = pred_seg.cpu().numpy()
+                pred_seg = np.asarray(pred_seg)
+                seg_arr = np.asarray(seg)
+                if pred_seg.ndim == 4:
+                    pred_seg = pred_seg[0]
+                if seg_arr.ndim == 4:
+                    seg_arr = seg_arr[0]
+                dice = compute_dice_from_arrays(pred_seg, seg_arr, labels_or_regions, ignore_label)
 
             if of is not None:
                 export_prediction_from_logits(prediction, data_properties, self.configuration_manager, self.plans_manager,
@@ -770,10 +798,10 @@ class nnUNetPredictor(object):
                      self.configuration_manager, self.label_manager,
                      data_properties,
                      save_probabilities))
-            
+
             case_time = time_func() - case_start_time
             if display is not None:
-                display.update_case(case_idx, case_time)
+                display.update_case(case_idx, case_time, dice)
         
         if display is not None:
             self.allow_tqdm = original_allow_tqdm
@@ -839,6 +867,8 @@ def predict_entry_point_modelfolder():
     parser.add_argument('--disable_progress_bar', action='store_true', required=False, default=False,
                         help='Set this flag to disable progress bar. Recommended for HPC environments (non interactive '
                              'jobs)')
+    parser.add_argument('--labels_folder', type=str, required=False, default=None,
+                        help='Folder with ground truth labels for per-case DICE. Requires -npp 0 -nps 0.')
 
     print(
         "\n#######################################################################\nPlease cite the following paper "
@@ -877,12 +907,28 @@ def predict_entry_point_modelfolder():
                                 allow_tqdm=not args.disable_progress_bar,
                                 verbose_preprocessing=args.verbose)
     predictor.initialize_from_trained_model_folder(args.m, args.f, args.chk)
-    predictor.predict_from_files(args.i, args.o, save_probabilities=args.save_probabilities,
-                                 overwrite=not args.continue_prediction,
-                                 num_processes_preprocessing=args.npp,
-                                 num_processes_segmentation_export=args.nps,
-                                 folder_with_segs_from_prev_stage=args.prev_stage_predictions,
-                                 num_parts=1, part_id=0)
+
+    run_sequential = args.npp == 0 and args.nps == 0
+    if run_sequential:
+        from nnunetv2.utilities.utils import get_identifiers_from_splitted_dataset_folder
+        num_cases = len(get_identifiers_from_splitted_dataset_folder(args.i, predictor.dataset_json["file_ending"]))
+        dataset_name = predictor.dataset_json.get("name", os.path.basename(args.m))
+        configuration = predictor.configuration_manager.configuration_name
+        device_str = "mps" if device.type == "mps" else "cuda" if device.type == "cuda" else "cpu"
+        with InferenceDisplay(dataset_name, configuration, device_str, num_cases, verbose=args.verbose) as display:
+            predictor.predict_from_files_sequential(
+                args.i, args.o, save_probabilities=args.save_probabilities,
+                overwrite=not args.continue_prediction,
+                folder_with_segs_from_prev_stage=args.prev_stage_predictions,
+                display=display, labels_folder=args.labels_folder,
+            )
+    else:
+        predictor.predict_from_files(args.i, args.o, save_probabilities=args.save_probabilities,
+                                    overwrite=not args.continue_prediction,
+                                    num_processes_preprocessing=args.npp,
+                                    num_processes_segmentation_export=args.nps,
+                                    folder_with_segs_from_prev_stage=args.prev_stage_predictions,
+                                    num_parts=1, part_id=0)
 
 
 def predict_entry_point():
@@ -948,6 +994,8 @@ def predict_entry_point():
     parser.add_argument('--disable_progress_bar', action='store_true', required=False, default=False,
                         help='Set this flag to disable progress bar. Recommended for HPC environments (non interactive '
                              'jobs)')
+    parser.add_argument('--labels_folder', type=str, required=False, default=None,
+                        help='Folder with ground truth labels for per-case DICE. Requires -npp 0 -nps 0.')
 
     print(
         "\n#######################################################################\nPlease cite the following paper "
@@ -995,18 +1043,22 @@ def predict_entry_point():
         args.f,
         checkpoint_name=args.chk
     )
-    
+
     run_sequential = args.nps == 0 and args.npp == 0
-    
+
     if run_sequential:
-        
-        print("Running in non-multiprocessing mode")
-        predictor.predict_from_files_sequential(args.i, args.o, save_probabilities=args.save_probabilities,
-                                                overwrite=not args.continue_prediction,
-                                                folder_with_segs_from_prev_stage=args.prev_stage_predictions)
-    
+        from nnunetv2.utilities.utils import get_identifiers_from_splitted_dataset_folder
+        num_cases = len(get_identifiers_from_splitted_dataset_folder(args.i, predictor.dataset_json["file_ending"]))
+        dataset_name = predictor.dataset_json.get("name", args.d)
+        device_str = "mps" if device.type == "mps" else "cuda" if device.type == "cuda" else "cpu"
+        with InferenceDisplay(dataset_name, args.c, device_str, num_cases, verbose=args.verbose) as display:
+            predictor.predict_from_files_sequential(
+                args.i, args.o, save_probabilities=args.save_probabilities,
+                overwrite=not args.continue_prediction,
+                folder_with_segs_from_prev_stage=args.prev_stage_predictions,
+                display=display, labels_folder=args.labels_folder,
+            )
     else:
-        
         predictor.predict_from_files(args.i, args.o, save_probabilities=args.save_probabilities,
                                     overwrite=not args.continue_prediction,
                                     num_processes_preprocessing=args.npp,

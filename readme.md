@@ -23,7 +23,8 @@ This is a customized version of nnU-Net v2 with significant enhancements to the 
 See the [wandb integration guide](documentation/pro/wandb_integration.md) for detailed usage instructions.
 
 ### Improved User Experience
-- **Better inference display** - single progress bar for all cases with average time per case
+- **Better inference display** - Rich-formatted output with progress bar, per-case timing, and summary table
+- **Per-sample DICE** - optional `--labels_folder` prints per-case DICE and running mean (vanilla and ROI)
 - **Cleaner output** - organized messages and warnings, less clutter
 - **Time estimates** - see how long each stage will take
 

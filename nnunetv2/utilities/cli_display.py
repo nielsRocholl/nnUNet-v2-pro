@@ -633,7 +633,9 @@ class InferenceDisplay:
         self.progress = None
         self.case_task_id = None
         self.start_time = None
-        self.case_times = []
+        self.case_times: List[float] = []
+        self._dice_sum: float = 0.0
+        self._dice_count: int = 0
 
     def __enter__(self):
         self.start_time = time()
@@ -700,21 +702,25 @@ class InferenceDisplay:
             table.add_row("Total Cases", str(self.num_cases))
             table.add_row("Total Time", f"{elapsed:.1f}s")
             table.add_row("Average Time per Case", f"{avg_time:.1f}s")
-            
+            if self._dice_count > 0:
+                mean_dice = self._dice_sum / self._dice_count
+                table.add_row("Mean Dice", f"{mean_dice:.4f}")
             self.console.print(Panel(table, border_style="green"))
             self.console.print(f"\n[bold green]✓ Inference completed in {elapsed:.1f}s[/bold green]")
         return False
 
-    def update_case(self, case_num: int, case_time: float = None):
+    def update_case(self, case_num: int, case_time: float = None, dice: Optional[float] = None):
         if case_time is not None:
             self.case_times.append(case_time)
-        
+        if dice is not None and not (isinstance(dice, float) and np.isnan(dice)):
+            self._dice_sum += dice
+            self._dice_count += 1
         if not self.verbose and self.progress and self.case_task_id is not None:
-            self.progress.update(
-                self.case_task_id,
-                completed=case_num,
-                description=f"Cases: {case_num}/{self.num_cases}"
-            )
+            desc = f"Cases: {case_num}/{self.num_cases}"
+            if dice is not None and not (isinstance(dice, float) and np.isnan(dice)):
+                desc += f" Dice: {dice:.4f}"
+            self.progress.update(self.case_task_id, completed=case_num, description=desc)
         elif self.verbose:
             time_str = f" ({case_time:.1f}s)" if case_time is not None else ""
-            self.console.print(f"[dim]Case {case_num}/{self.num_cases}{time_str}[/dim]")
+            dice_str = f" Dice: {dice:.4f}" if dice is not None and not (isinstance(dice, float) and np.isnan(dice)) else ""
+            self.console.print(f"[dim]Case {case_num}/{self.num_cases}{time_str}{dice_str}[/dim]")

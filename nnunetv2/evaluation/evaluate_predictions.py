@@ -85,6 +85,31 @@ def compute_tp_fp_fn_tn(mask_ref: np.ndarray, mask_pred: np.ndarray, ignore_mask
     return tp, fp, fn, tn
 
 
+def compute_dice_from_arrays(
+    pred: np.ndarray,
+    gt: np.ndarray,
+    labels_or_regions: Union[List[int], List[Union[int, Tuple[int, ...]]]],
+    ignore_label: int = None,
+) -> float:
+    """Foreground mean Dice over labels/regions. Returns nan if no foreground in any region."""
+    pred = np.asarray(pred)
+    gt = np.asarray(gt)
+    if pred.shape != gt.shape:
+        raise ValueError(f"pred shape {pred.shape} != gt shape {gt.shape}")
+    ignore_mask = gt == ignore_label if ignore_label is not None else None
+    dices = []
+    for r in labels_or_regions:
+        mask_ref = region_or_label_to_mask(gt, r)
+        mask_pred = region_or_label_to_mask(pred, r)
+        tp, fp, fn, tn = compute_tp_fp_fn_tn(mask_ref, mask_pred, ignore_mask)
+        if tp + fp + fn == 0:
+            continue
+        dices.append(2 * tp / (2 * tp + fp + fn))
+    if not dices:
+        return np.nan
+    return float(np.mean(dices))
+
+
 def compute_metrics(reference_file: str, prediction_file: str, image_reader_writer: BaseReaderWriter,
                     labels_or_regions: Union[List[int], List[Union[int, Tuple[int, ...]]]],
                     ignore_label: int = None) -> dict:

@@ -81,8 +81,8 @@ def get_prompt_aware_slicers(
 def parse_points_json(
     path: str,
     points_space_override: Optional[str] = None,
-) -> Tuple[List[Tuple[int, int, int]], str]:
-    """Load points from JSON. Returns (points_zyx, points_space)."""
+) -> Tuple[List, str, Optional[str]]:
+    """Load points from JSON. Returns (points_raw, points_space, points_format)."""
     d = load_json(path)
     points = d.get("points")
     if points is None:
@@ -90,15 +90,10 @@ def parse_points_json(
     points_space = points_space_override or d.get("points_space", "voxel")
     if points_space not in ("voxel", "world"):
         raise ValueError(f"points_space must be 'voxel' or 'world', got {points_space!r}")
-    if points_space == "voxel":
-        out = []
-        for pt in points:
-            if len(pt) != 3:
-                raise ValueError(f"Point must have 3 coords, got {len(pt)}")
-            z, y, x = int(round(pt[0])), int(round(pt[1])), int(round(pt[2]))
-            out.append((z, y, x))
-        return out, points_space
-    return [(float(p[0]), float(p[1]), float(p[2])) for p in points], points_space
+    points_format = d.get("points_format")
+    if points_format is None:
+        points_format = "zyx_voxel" if points_space == "voxel" else "xyz_world"
+    return points, points_space, points_format
 
 
 class nnUNetROIPredictor(nnUNetPredictor):

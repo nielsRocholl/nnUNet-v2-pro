@@ -118,6 +118,7 @@ nnUNetv2_predict_roi -i INPUT_FOLDER -o OUTPUT_FOLDER -m MODEL_FOLDER \
 | `--config` | No | Config path; default: `{model_folder}/nnunet_pro_config.json` |
 | `--points_space` | No | Override `points_space` from JSON (`voxel` or `world`) |
 | `--disable_tta` | No | Disable test-time augmentation |
+| `--labels_folder` | No | Folder with ground truth for per-case DICE and running average |
 | `-f` | No | Folds (default: 0) |
 | `-chk` | No | Checkpoint name (default: checkpoint_final.pth) |
 | `-device` | No | `cuda`, `cpu`, or `mps` |
@@ -127,12 +128,14 @@ nnUNetv2_predict_roi -i INPUT_FOLDER -o OUTPUT_FOLDER -m MODEL_FOLDER \
 ```json
 {
   "points": [[z, y, x], [z, y, x], ...],
-  "points_space": "voxel"
+  "points_space": "voxel",
+  "points_format": "zyx_voxel"
 }
 ```
 
 - **voxel**: Coordinates in preprocessed voxel space `(z, y, x)`.
 - **world**: Coordinates in world space `(x, y, z)` in mm; converted internally.
+- **points_format** (optional): `zyx_voxel`, `xyz_voxel`, `xyz_world`, or `zyx_world`. Default: `zyx_voxel` for voxel, `xyz_world` for world. See [Coordinate validation](#coordinate-validation) below.
 
 ### Example
 
@@ -158,12 +161,56 @@ If the model was trained with prompt-aware, the config is in the model folder an
 
 ---
 
+## Inference display and per-sample DICE
+
+Both **vanilla** (`nnUNetv2_predict`) and **ROI** (`nnUNetv2_predict_roi`) inference use Rich-formatted output (Panel, Progress bar, summary table) consistent with plan/preprocess/train.
+
+### Per-sample DICE and running average
+
+When ground truth labels are available, pass `--labels_folder` to print per-case DICE and a running mean:
+
+- **ROI**: `nnUNetv2_predict_roi ... --labels_folder $nnUNet_raw/Dataset010/labelsTr`
+- **Vanilla**: `nnUNetv2_predict -i ... -o ... -m ... --labels_folder $nnUNet_raw/Dataset010/labelsTr -npp 0 -nps 0`
+
+Vanilla requires `-npp 0 -nps 0` (sequential mode) for DICE; multiprocessing mode does not support it. Labels must match input case IDs (e.g. `case_001.nii.gz` in labels folder for `case_001_0000.nii.gz` in images).
+
+The summary table at the end includes **Mean Dice** when `--labels_folder` was provided and labels were found.
+
+---
+
 ## Coordinate conventions
 
 - **World/ITK**: `(x, y, z)` in mm.
 - **Voxel/tensor**: `(z, y, x)` (NumPy/PyTorch order).
 
 If `points_space` is `world`, conversion to preprocessed voxel space uses the image's spacing and affine.
+
+---
+
+## Coordinate validation
+
+A common source of errors is mixing up **physical vs voxel** coordinates and **axis ordering** (x,y,z vs z,y,x). ROI inference validates and converts coordinates before use.
+
+### Supported formats
+
+| Format | Space | Order | Use case |
+|--------|-------|-------|----------|
+| `zyx_voxel` (default) | voxel | z,y,x | nnUNet preprocessed |
+| `xyz_voxel` | voxel | x,y,z | ITK-SNAP, 3D Slicer voxel export |
+| `xyz_world` (default for world) | world | x,y,z | ITK physical mm |
+| `zyx_world` | world | z,y,x | Pipelines exporting world in array order |
+
+Specify `points_format` in your JSON when your tool exports a different order:
+
+```json
+{"points": [[125, 125, 60]], "points_space": "voxel", "points_format": "xyz_voxel"}
+```
+
+### Common mistakes
+
+- **Viewer exports (x,y,z) voxel** → use `points_format: "xyz_voxel"`.
+- **Passing mm as voxel** → use `points_space: "world"` and `points_format: "xyz_world"` (or `zyx_world` if your source uses array order).
+- **Wrong format** → validation raises `ValueError` with a clear message.
 
 ---
 
