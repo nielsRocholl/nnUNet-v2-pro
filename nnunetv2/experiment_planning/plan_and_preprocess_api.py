@@ -182,7 +182,7 @@ def preprocess_dataset(dataset_id: int,
             if "source_datasets" in dataset_json:
                 from nnunetv2.utilities.dataset_statistics import collect_case_statistics, save_case_stats
                 output_dir = join(nnUNet_preprocessed, dataset_name, configuration_manager.data_identifier)
-                size_bins_config = None
+                size_bins_config = {"mode": "percentile", "trim_percentile": 0.025, "percentiles": [0.25, 0.5, 0.75]}
                 if config_path:
                     cfg = load_json(config_path)
                     cfg = cfg.get("size_bins") if isinstance(cfg, dict) else None
