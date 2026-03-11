@@ -57,6 +57,7 @@ def create_merged_dataset(dataset_ids: List[int], output_folder: str) -> str:
         "file_ending": template_json["file_ending"],
         "numTraining": num_training,
         "dataset": merged_dataset,
+        "source_datasets": [convert_id_to_dataset_name(d) for d in dataset_ids],
     }
     for k in ("overwrite_image_reader_writer", "regions_class_order"):
         if k in template_json:

@@ -123,7 +123,8 @@ def preprocess_dataset(dataset_id: int,
                        num_processes: Union[int, Tuple[int, ...], List[int]] = (4, 8),
                        verbose: bool = False,
                        display: Optional[object] = None,
-                       resume: bool = False) -> None:
+                       resume: bool = False,
+                       config_path: Optional[str] = None) -> None:
     from nnunetv2.utilities.cli_display import PreprocessingDisplay
     
     if not isinstance(num_processes, list):
@@ -178,15 +179,31 @@ def preprocess_dataset(dataset_id: int,
                           update=True)
             current_display.complete_step("Copying ground truth")
 
+            if "source_datasets" in dataset_json:
+                from nnunetv2.utilities.dataset_statistics import collect_case_statistics, save_case_stats
+                output_dir = join(nnUNet_preprocessed, dataset_name, configuration_manager.data_identifier)
+                size_bins_config = None
+                if config_path:
+                    cfg = load_json(config_path)
+                    cfg = cfg.get("size_bins") if isinstance(cfg, dict) else None
+                    if isinstance(cfg, dict):
+                        size_bins_config = cfg
+                case_stats = collect_case_statistics(
+                    output_dir, dataset_json, dataset_name, size_bins_config=size_bins_config
+                )
+                stats_path = join(nnUNet_preprocessed, dataset_name, f"case_stats_{c}.json")
+                save_case_stats(case_stats, stats_path, size_bins_config=size_bins_config)
+
 
 def preprocess(dataset_ids: List[int],
                plans_identifier: str = 'nnUNetPlans',
                configurations: Union[Tuple[str], List[str]] = ('3d_fullres', '3d_lowres'),
                num_processes: Union[int, Tuple[int, ...], List[int]] = (4, 8),
                verbose: bool = False,
-               resume: bool = False):
+               resume: bool = False,
+               config_path: Optional[str] = None):
     if len(dataset_ids) > 1:
         names = [convert_id_to_dataset_name(d) for d in dataset_ids]
         Console().print(f"[bold]Processing {len(dataset_ids)} datasets:[/bold] {', '.join(names)}\n")
     for d in dataset_ids:
-        preprocess_dataset(d, plans_identifier, configurations, num_processes, verbose, resume=resume)
+        preprocess_dataset(d, plans_identifier, configurations, num_processes, verbose, resume=resume, config_path=config_path)

@@ -913,7 +913,9 @@ def predict_entry_point_modelfolder():
         from nnunetv2.utilities.utils import get_identifiers_from_splitted_dataset_folder
         num_cases = len(get_identifiers_from_splitted_dataset_folder(args.i, predictor.dataset_json["file_ending"]))
         dataset_name = predictor.dataset_json.get("name", os.path.basename(args.m))
-        configuration = predictor.configuration_manager.configuration_name
+        data_id = predictor.configuration_manager.data_identifier
+        plans_name = predictor.plans_manager.plans_name
+        configuration = data_id[len(plans_name) + 1:] if data_id.startswith(plans_name + "_") else data_id
         device_str = "mps" if device.type == "mps" else "cuda" if device.type == "cuda" else "cpu"
         with InferenceDisplay(dataset_name, configuration, device_str, num_cases, verbose=args.verbose) as display:
             predictor.predict_from_files_sequential(

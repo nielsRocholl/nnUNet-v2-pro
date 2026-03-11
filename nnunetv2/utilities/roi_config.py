@@ -1,11 +1,25 @@
 """ROI config: YAML/JSON → dataclass. No hardcoded tunables."""
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal, Optional, Tuple
+from typing import Dict, Literal, Optional, Tuple
 
 from batchgenerators.utilities.file_and_folder_operations import load_json
 
 DEFAULT_CONFIG_PATH = Path(__file__).parent / "nnunet_pro_config.json"
+
+
+@dataclass(frozen=True)
+class SizeBinsConfig:
+    mode: Literal["percentile", "fixed"]
+    trim_percentile: float = 0.025
+    percentiles: Tuple[float, ...] = (0.25, 0.5, 0.75)
+    thresholds: Tuple[int, ...] = (100, 2000, 20000)
+
+
+@dataclass(frozen=True)
+class StratifiedConfig:
+    dataset_weights: Dict[str, float]
+    size_bin_weights: Dict[str, float]
 
 
 @dataclass(frozen=True)
@@ -50,6 +64,8 @@ class RoiPromptConfig:
     prompt: PromptConfig
     sampling: SamplingConfig
     inference: InferenceConfig
+    size_bins: Optional[SizeBinsConfig] = None
+    stratified: Optional[StratifiedConfig] = None
 
 
 def _require(d: dict, key: str, msg: str = "") -> object:
@@ -151,6 +167,37 @@ def _load_inference(inf: Optional[dict]) -> InferenceConfig:
     return InferenceConfig(tile_step_size=tile_step_size, disable_tta_default=disable_tta_default)
 
 
+def _load_size_bins(sb: Optional[dict]) -> Optional[SizeBinsConfig]:
+    if sb is None or not isinstance(sb, dict):
+        return None
+    mode = sb.get("mode", "fixed")
+    if mode not in ("percentile", "fixed"):
+        return None
+    trim = float(sb.get("trim_percentile", 0.025))
+    percs = tuple(float(p) for p in sb.get("percentiles", [0.25, 0.5, 0.75]))
+    thresh_raw = sb.get("thresholds", [100, 2000, 20000])
+    thresh = tuple(int(t) for t in thresh_raw) if thresh_raw else (100, 2000, 20000)
+    return SizeBinsConfig(mode=mode, trim_percentile=trim, percentiles=percs, thresholds=thresh)
+
+
+def _load_stratified(s: Optional[dict]) -> Optional[StratifiedConfig]:
+    if s is None or not isinstance(s, dict):
+        return None
+    dw = s.get("dataset_weights")
+    sbw = s.get("size_bin_weights")
+    if not isinstance(dw, dict) or not isinstance(sbw, dict):
+        return None
+    dw = {str(k): float(v) for k, v in dw.items()}
+    sbw = {str(k): float(v) for k, v in sbw.items()}
+    dw_sum = sum(dw.values())
+    sbw_sum = sum(sbw.values())
+    if dw_sum > 0:
+        dw = {k: v / dw_sum for k, v in dw.items()}
+    if sbw_sum > 0:
+        sbw = {k: v / sbw_sum for k, v in sbw.items()}
+    return StratifiedConfig(dataset_weights=dw, size_bin_weights=sbw)
+
+
 def load_config(path: str) -> RoiPromptConfig:
     """Load config from JSON. Fail fast on missing keys. Returns prompt+sampling+inference config."""
     p = Path(path)
@@ -166,8 +213,12 @@ def load_config(path: str) -> RoiPromptConfig:
     if not isinstance(sampling, dict):
         raise KeyError("Config must have 'sampling' section (dict)")
     inference = _load_inference(d.get("inference"))
+    size_bins = _load_size_bins(d.get("size_bins"))
+    stratified = _load_stratified(d.get("stratified"))
     return RoiPromptConfig(
         prompt=_load_prompt(prompt),
         sampling=_load_sampling(sampling),
         inference=inference,
+        size_bins=size_bins,
+        stratified=stratified,
     )

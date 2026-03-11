@@ -8,6 +8,9 @@ NNUNET_DUMMY_BASE = "/Users/nielsrocholl/Documents/PhD DIAG - Local/Data/dummy d
 # Path to ULS nnUNet_raw (19 datasets) for merge tests
 ULS_NNUNET_RAW = "/Users/nielsrocholl/Documents/PhD DIAG - Local/Data/Datasets/universal-lesion-segmentation/nnUNet_raw"
 
+# Path to KiTS23 for stats collection tests
+KITS23_NNUNET_RAW = "/Users/nielsrocholl/Documents/PhD DIAG - Local/Data/Datasets/universal-lesion-segmentation/nnUNet_raw/Dataset022_KiTS23"
+
 
 def _set_nnunet_paths():
     os.environ["nnUNet_raw"] = os.path.join(NNUNET_DUMMY_BASE, "nnUNet_raw")

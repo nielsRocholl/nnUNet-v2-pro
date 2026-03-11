@@ -32,6 +32,7 @@ See the [wandb integration guide](documentation/pro/wandb_integration.md) for de
 - **Merge multiple datasets** into one without copying raw files
 - Use `--merge` and `-o` with `nnUNetv2_plan_and_preprocess` (or the separate fingerprint/plan/preprocess commands)
 - Source datasets must share the same `channel_names`, `file_ending`, and `labels`
+- **Dataset statistics** — per-case fg_voxels (total, min/max/mean connected component), size_bin, and source dataset; saved as `case_stats_{config}.json` for stratified sampling
 
 See [documentation/pro/multi_dataset_merge.md](documentation/pro/multi_dataset_merge.md) for usage.
 
