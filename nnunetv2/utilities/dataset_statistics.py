@@ -119,6 +119,7 @@ def save_case_stats(
     size_bin_thresholds: tuple = DEFAULT_THRESHOLDS,
     size_bins_config: dict | None = None,
 ) -> None:
+    stats = dict(stats)
     thresholds = stats.pop("_thresholds_used", None) or size_bin_thresholds
     meta = {"size_bin_thresholds": list(thresholds)}
     if size_bins_config:

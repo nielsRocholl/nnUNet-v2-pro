@@ -19,18 +19,14 @@ When preprocessing a **merged** dataset, per-case statistics are collected and s
 
 ## Size Bins
 
-### Fixed mode (default)
+### Percentile mode (default for merged datasets)
 
-Thresholds in voxels: `[100, 2000, 20000]`
+**Default.** Compute thresholds from the dataset distribution after trimming extremes. Reduces impact of outliers. No config required.
 
-- `tiny`: 1–99
-- `small`: 100–1999
-- `medium`: 2000–19999
-- `large`: ≥20000
+- `trim_percentile`: 0.025 (drop 2.5% from each tail before computing percentiles)
+- `percentiles`: [0.25, 0.5, 0.75] (quartiles → four bins: tiny, small, medium, large)
 
-### Percentile mode
-
-Compute thresholds from the dataset distribution after trimming extremes. Reduces impact of outliers.
+To override, add `size_bins` to your config and pass `--config`:
 
 ```json
 "size_bins": {
@@ -40,10 +36,23 @@ Compute thresholds from the dataset distribution after trimming extremes. Reduce
 }
 ```
 
-- `trim_percentile`: Drop this fraction from each tail before computing percentiles (e.g. 0.025 = 2.5% each side)
-- `percentiles`: Three values defining four bins (quartiles by default)
+### Fixed mode
 
-Use `--config path/to/nnunet_pro_config.json` when preprocessing a merged dataset to apply `size_bins`.
+Explicit voxel thresholds: `[100, 2000, 20000]`
+
+- `tiny`: 1–99
+- `small`: 100–1999
+- `medium`: 2000–19999
+- `large`: ≥20000
+
+Use `mode: "fixed"` in config when you want fixed thresholds instead of data-driven percentiles:
+
+```json
+"size_bins": {
+  "mode": "fixed",
+  "thresholds": [100, 2000, 20000]
+}
+```
 
 ## Stratified Sampler
 
@@ -83,12 +92,12 @@ Per-stratum weight = `dataset_weights[dataset] × size_bin_weights[size_bin]`. B
 
 ## End-to-End
 
-1. **Preprocess** merged dataset with config (for percentile size bins):
+1. **Preprocess** merged dataset (percentile size bins are used by default; no config needed):
    ```bash
-   nnUNetv2_plan_and_preprocess -d 1 2 --merge -o 999 -c 3d_fullres --config path/to/nnunet_pro_config.json
+   nnUNetv2_plan_and_preprocess -d 1 2 --merge -o 999 -c 3d_fullres
    ```
 
-2. **Train** with stratified sampler:
+2. **Train** with stratified sampler (use `--config` to control batch makeup):
    ```bash
    nnUNetv2_train 999 3d_fullres 0 -tr nnUNetTrainerPromptAwareStratified -p nnUNetResEncUNetLPlans --config path/to/nnunet_pro_config.json
    ```

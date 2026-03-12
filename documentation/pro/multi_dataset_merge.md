@@ -44,6 +44,8 @@ When preprocessing a merged dataset, per-case statistics are collected automatic
 - `dataset` — source dataset name
 - `size_bin` — background / tiny / small / medium / large (from `max_cc` thresholds)
 
+**Size bins:** Percentile-based by default (trim extremes, then quartiles). No config required. Use `--config` with `size_bins` in nnunet_pro_config.json to override (e.g. fixed thresholds).
+
 **Output:** `nnUNet_preprocessed/Dataset999_Merged/case_stats_3d_fullres.json` (and per config)
 
 The merged `dataset.json` includes `source_datasets` to map case IDs to their source. Stats collection runs for both `plan_and_preprocess` and standalone `preprocess` when the target is a merged dataset.
@@ -60,9 +62,9 @@ nnUNetv2_train 999 3d_fullres 0 -p nnUNetResEncUNetLPlans
 
 For balanced batches across datasets and lesion sizes, use `nnUNetTrainerPromptAwareStratified`. Requires `case_stats_{config}.json` (produced automatically when preprocessing a merged dataset).
 
-Use `--config` when preprocessing to enable percentile-based size bins; use `--config` when training to control batch makeup via `stratified.dataset_weights` and `stratified.size_bin_weights`. See [stratified_sampling_guide.md](stratified_sampling_guide.md).
+Percentile-based size bins are used by default when preprocessing merged datasets. Use `--config` when training to control batch makeup via `stratified.dataset_weights` and `stratified.size_bin_weights`. See [stratified_sampling_guide.md](stratified_sampling_guide.md).
 
 ```bash
-nnUNetv2_plan_and_preprocess -d 1 2 --merge -o 999 -c 3d_fullres --config path/to/nnunet_pro_config.json
+nnUNetv2_plan_and_preprocess -d 1 2 --merge -o 999 -c 3d_fullres
 nnUNetv2_train 999 3d_fullres 0 -tr nnUNetTrainerPromptAwareStratified -p nnUNetResEncUNetLPlans --config path/to/nnunet_pro_config.json
 ```

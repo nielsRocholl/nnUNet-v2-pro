@@ -173,7 +173,8 @@ def run_training(dataset_name_or_id: Union[str, int],
                  wandb_run_name: str = None,
                  wandb_tags: List[str] = None,
                  config_path: Optional[str] = None,
-                 num_epochs: Optional[int] = None):
+                 num_epochs: Optional[int] = None,
+                 num_iterations_per_epoch: Optional[int] = None):
     if plans_identifier == 'nnUNetPlans':
         print("\n############################\n"
               "INFO: You are using the old nnU-Net default plans. We have updated our recommendations. "
@@ -228,6 +229,9 @@ def run_training(dataset_name_or_id: Union[str, int],
             nnunet_trainer.disable_checkpointing = disable_checkpointing
         if num_epochs is not None:
             nnunet_trainer.num_epochs = num_epochs
+        if num_iterations_per_epoch is not None:
+            nnunet_trainer.num_iterations_per_epoch = num_iterations_per_epoch
+            nnunet_trainer.num_val_iterations_per_epoch = max(1, num_iterations_per_epoch // 5)
 
         assert not (continue_training and only_run_validation), f'Cannot set --c and --val flag at the same time. Dummy.'
 
@@ -273,6 +277,8 @@ def run_training_entry():
                         help='[OPTIONAL for nnUNetTrainerPromptAware] Path to ROI config JSON. Default: bundled config (EDT encoding).')
     parser.add_argument('--epochs', type=int, required=False, default=None,
                         help='[OPTIONAL] Override number of training epochs (for overfit testing).')
+    parser.add_argument('--steps', type=int, required=False, default=None,
+                        help='[PRO] Override iterations per epoch (for quick testing). Default: 250.')
     parser.add_argument('-p', type=str, required=False, default='nnUNetPlans',
                         help='[OPTIONAL] Use this flag to specify a custom plans identifier. Default: nnUNetPlans')
     parser.add_argument('-pretrained_weights', type=str, required=False, default=None,
@@ -333,7 +339,7 @@ def run_training_entry():
                  args.num_gpus, args.npz, args.c, args.val, args.disable_checkpointing, args.val_best,
                  device=device, use_wandb=use_wandb, wandb_project=args.wandb_project,
                  wandb_entity=args.wandb_entity, wandb_run_name=args.wandb_run_name, wandb_tags=wandb_tags,
-                 config_path=args.config, num_epochs=args.epochs)
+                 config_path=args.config, num_epochs=args.epochs, num_iterations_per_epoch=args.steps)
 
 
 if __name__ == '__main__':

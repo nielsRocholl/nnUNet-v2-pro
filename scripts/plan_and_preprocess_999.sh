@@ -36,12 +36,12 @@ except Exception:
 fi
 
 # Full merge + plan + preprocess (uncomment to run from scratch):
-nnUNetv2_plan_and_preprocess -d 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 --merge -o 999 \
+nnUNetv2_plan_and_preprocess -d 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 --merge -o 999 \
     -pl nnUNetPlannerResEncL_torchres \
     -gpu_memory_target 80 \
     -overwrite_plans_name nnUNetResEncUNetLPlans_h200 \
     -c 3d_fullres \
-    -npfp 48 -np 48 \
+    -npfp 16 -np 4 \
     --verify_dataset_integrity --reject_failing_cases --verbose \
     ${CONFIG_PATH:+--config "$CONFIG_PATH"}
 

@@ -129,6 +129,16 @@ Configuration is resolved in this order (highest priority first):
 - `best_ema_dice` - Best EMA Dice score (logged when new best is found)
 - `is_best` - Flag indicating if this is the best model so far
 
+### Extended Metrics (nnUNetTrainerPromptAware / nnUNetTrainerPromptAwareStratified only)
+
+| Metric | Definition |
+|--------|------------|
+| `dice_per_patch` | **Patch-based**: mean Dice per patch, then averaged over all patches (proxy for patch-based inference) |
+| `dice_dataset_{name}` | **nnUNet-style**: aggregate tp/fp/fn across patches in that dataset, then Dice from totals |
+| `dice_size_bin_{bin}` | **nnUNet-style**: aggregate tp/fp/fn across patches in that size bin (tiny, small, medium, large), then Dice from totals |
+
+Per-dataset and per-size-bin require `case_stats_{config}.json` (from Step 11). See [completed_steps/13_extended_wandb_metrics.md](../../completed_steps/13_extended_wandb_metrics.md).
+
 ### Configuration (logged once at training start):
 - `dataset_name` - Dataset identifier
 - `configuration` - Configuration name (e.g., "3d_fullres")

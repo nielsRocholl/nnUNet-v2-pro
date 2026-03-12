@@ -19,14 +19,14 @@ Stratified batch sampling by (dataset, size_bin) for merged datasets. Add-on cla
 
 ## Behavior
 
-- **Size bins**: Fixed `[100, 2000, 20000]` or percentile-based (trim extremes, compute quartiles). Config: `size_bins` in nnunet_pro_config.json.
+- **Size bins**: Percentile-based by default for merged datasets (trim extremes, quartiles). No config required. Use `size_bins` in config to override (e.g. fixed thresholds).
 - **Stratified sampler**: `dataset_weights` and `size_bin_weights` control batch makeup. Config: `stratified` in nnunet_pro_config.json. Omit for uniform round-robin.
-- Preprocess with `--config` to use percentile size bins; train with `--config` for weighted sampling.
+- Preprocess: no config needed for percentile bins. Train with `--config` for weighted sampling.
 
 ## Usage
 
 ```bash
-nnUNetv2_plan_and_preprocess -d 1 2 --merge -o 999 -c 3d_fullres --config path/to/nnunet_pro_config.json
+nnUNetv2_plan_and_preprocess -d 1 2 --merge -o 999 -c 3d_fullres
 nnUNetv2_train 999 3d_fullres 0 -tr nnUNetTrainerPromptAwareStratified -p nnUNetResEncUNetLPlans --config path/to/nnunet_pro_config.json
 ```
 

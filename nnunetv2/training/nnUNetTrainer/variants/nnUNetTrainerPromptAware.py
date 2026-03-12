@@ -5,19 +5,20 @@ import numpy as np
 import torch
 from batchgenerators.dataloading.nondet_multi_threaded_augmenter import NonDetMultiThreadedAugmenter
 from batchgenerators.dataloading.single_threaded_augmenter import SingleThreadedAugmenter
+from batchgenerators.utilities.file_and_folder_operations import join
 
 from nnunetv2.training.dataloading.nnunet_dataset import infer_dataset_class
-from nnunetv2.training.dataloading.prompt_aware_data_loader import (
-    MODE_NEG,
-    MODE_POS,
-    MODE_POS_NO_PROMPT,
-    MODE_POS_SPUR,
-    nnUNetPromptAwareDataLoader,
-)
+from nnunetv2.training.dataloading.prompt_aware_data_loader import nnUNetPromptAwareDataLoader
 from nnunetv2.training.nnUNetTrainer.variants.network_architecture.nnUNetTrainerPromptChannel import (
     nnUNetTrainerPromptChannel,
 )
 from nnunetv2.training.loss.dice import get_tp_fp_fn_tn
+from nnunetv2.training.nnUNetTrainer.variants._validation_utils import (
+    MODE_NAMES,
+    build_wandb_extended_metrics,
+    gather_validation_outputs_ddp,
+    log_dice_by_mode,
+)
 from nnunetv2.utilities.collate_outputs import collate_outputs
 from nnunetv2.utilities.default_n_proc_DA import get_allowed_n_proc_DA
 from nnunetv2.utilities.roi_config import DEFAULT_CONFIG_PATH, load_config
@@ -160,8 +161,11 @@ class nnUNetTrainerPromptAware(nnUNetTrainerPromptChannel):
 
     def validation_step(self, batch: dict) -> dict:
         if "mode" not in batch:
-            return super().validation_step(batch)
-        from nnunetv2.utilities.helpers import autocast, dummy_context
+            result = super().validation_step(batch)
+            result["keys"] = batch.get("keys", [])
+            return result
+        from torch import autocast
+        from nnunetv2.utilities.helpers import dummy_context
 
         data = batch["data"]
         target = batch["target"]
@@ -226,6 +230,7 @@ class nnUNetTrainerPromptAware(nnUNetTrainerPromptChannel):
             "fp_hard": fp_hard,
             "fn_hard": fn_hard,
             "mode": mode_np,
+            "keys": batch.get("keys", []),
         }
 
     def on_validation_epoch_end(self, val_outputs: List[dict]) -> None:
@@ -239,53 +244,41 @@ class nnUNetTrainerPromptAware(nnUNetTrainerPromptChannel):
         fp_all = outputs_collated["fp_hard"]
         fn_all = outputs_collated["fn_hard"]
         if tp_all.ndim == 3:
-            n_samples = tp_all.shape[0] * tp_all.shape[1]
             tp_flat = tp_all.reshape(-1, tp_all.shape[-1])
             fp_flat = fp_all.reshape(-1, fp_all.shape[-1])
             fn_flat = fn_all.reshape(-1, fn_all.shape[-1])
         else:
-            n_samples = tp_all.shape[0]
             tp_flat = tp_all
             fp_flat = fp_all
             fn_flat = fn_all
 
-        loss_here = np.mean(outputs_collated["loss"])
-        self.logger.log("val_losses", loss_here, self.current_epoch)
-
-        mode_names = {
-            MODE_POS: "pos",
-            MODE_POS_SPUR: "pos_spur",
-            MODE_POS_NO_PROMPT: "pos_no_prompt",
-            MODE_NEG: "neg",
-        }
-        for m in (MODE_POS, MODE_POS_SPUR, MODE_POS_NO_PROMPT, MODE_NEG):
-            idx = mode_flat == m
-            if not np.any(idx):
-                self.logger.log(f"val_Dice_{mode_names[m]}", float("nan"), self.current_epoch)
-                continue
-            tp_m = np.sum(tp_flat[idx], axis=0)
-            fp_m = np.sum(fp_flat[idx], axis=0)
-            fn_m = np.sum(fn_flat[idx], axis=0)
-            dc = np.array(
-                [2 * t / (2 * t + p + n) if (2 * t + p + n) > 0 else np.nan for t, p, n in zip(tp_m, fp_m, fn_m)]
+        keys_flat = outputs_collated.get("keys", [])
+        if isinstance(keys_flat, np.ndarray):
+            keys_flat = keys_flat.flatten().tolist()
+        else:
+            keys_flat = list(keys_flat) if keys_flat else []
+        if self.is_ddp:
+            tp_flat, fp_flat, fn_flat, keys_flat, mode_flat, loss_here = gather_validation_outputs_ddp(
+                tp_flat, fp_flat, fn_flat, keys_flat, mode_flat, outputs_collated["loss"]
             )
-            mean_dc = np.nanmean(dc)
-            self.logger.log(f"val_Dice_{mode_names[m]}", mean_dc, self.current_epoch)
-
-        tp_global = np.sum(tp_flat, axis=0)
-        fp_global = np.sum(fp_flat, axis=0)
-        fn_global = np.sum(fn_flat, axis=0)
-        dc_global = np.array(
-            [2 * t / (2 * t + p + n) if (2 * t + p + n) > 0 else np.nan for t, p, n in zip(tp_global, fp_global, fn_global)]
-        )
-        mean_fg_dice = np.nanmean(dc_global)
-        self.logger.log("mean_fg_dice", mean_fg_dice, self.current_epoch)
-        self.logger.log("dice_per_class_or_region", dc_global.tolist(), self.current_epoch)
+        else:
+            loss_here = np.mean(outputs_collated["loss"])
+        self.logger.log("val_losses", loss_here, self.current_epoch)
+        log_dice_by_mode(tp_flat, fp_flat, fn_flat, mode_flat, self.logger, self.current_epoch)
 
         if self.wandb is not None:
             wb_dict = {}
-            for m, name in mode_names.items():
+            for m, name in MODE_NAMES.items():
                 if f"val_Dice_{name}" in self.logger.my_fantastic_logging:
                     wb_dict[f"val_Dice_{name}"] = self.logger.my_fantastic_logging[f"val_Dice_{name}"][-1]
+            case_stats_path = join(
+                self.preprocessed_dataset_folder_base,
+                f"case_stats_{self.configuration_name}.json",
+            )
+            ext_dict = build_wandb_extended_metrics(
+                tp_flat, fp_flat, fn_flat, keys_flat,
+                case_stats_path, self.plans_manager.dataset_name,
+            )
+            wb_dict.update(ext_dict)
             if wb_dict:
                 self.wandb.log(wb_dict, step=self.current_epoch)
