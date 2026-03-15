@@ -20,11 +20,26 @@ from nnunetv2.training.nnUNetTrainer.variants._validation_utils import (
     log_dice_by_mode,
 )
 def _collate_prompt_aware_outputs(outputs: List[dict]) -> dict:
-    """Collate validation outputs; stacks along sample axis to handle varying batch sizes."""
+    """Collate validation outputs; handles varying batch sizes and class counts (merged datasets)."""
     collated = {}
     for k in outputs[0].keys():
         if k in ("tp_hard", "fp_hard", "fn_hard"):
-            collated[k] = np.vstack([o[k] for o in outputs])
+            arrs = [o[k] for o in outputs]
+            shapes = [a.shape for a in arrs]
+            max_c = max(a.shape[-1] for a in arrs)
+            if len(set(a.shape[-1] for a in arrs)) > 1:
+                import logging
+                logging.getLogger("nnunet").warning(
+                    f"Validation outputs have varying class dim: {shapes}. "
+                    f"Expected binary (batch,1). Padding to max. Check dataset consistency."
+                )
+            padded = []
+            for a in arrs:
+                if a.shape[-1] < max_c:
+                    pad = np.zeros((*a.shape[:-1], max_c - a.shape[-1]), dtype=a.dtype)
+                    a = np.concatenate([a, pad], axis=-1)
+                padded.append(a)
+            collated[k] = np.vstack(padded)
         elif k == "mode":
             collated[k] = np.concatenate([np.atleast_1d(o[k]).flatten() for o in outputs])
         elif np.isscalar(outputs[0][k]) or (isinstance(outputs[0][k], np.ndarray) and outputs[0][k].ndim == 0):

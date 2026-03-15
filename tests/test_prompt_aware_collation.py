@@ -56,6 +56,22 @@ def test_collate_varying_batch_sizes():
     )
 
 
+def test_collate_varying_class_counts():
+    """Collation must pad tp/fp/fn when different batches have 10 vs 12 classes (merged datasets)."""
+    outputs = [
+        {"loss": np.float32(0.5), "tp_hard": np.ones((4, 10)), "fp_hard": np.zeros((4, 10)),
+         "fn_hard": np.zeros((4, 10)), "mode": np.zeros(4, dtype=np.int32), "keys": ["a"] * 4},
+        {"loss": np.float32(0.6), "tp_hard": np.ones((2, 12)), "fp_hard": np.zeros((2, 12)),
+         "fn_hard": np.zeros((2, 12)), "mode": np.ones(2, dtype=np.int32), "keys": ["b"] * 2},
+    ]
+    collated = _collate_prompt_aware_outputs(outputs)
+    assert collated["tp_hard"].shape == (6, 12)
+    assert collated["fp_hard"].shape == (6, 12)
+    assert collated["fn_hard"].shape == (6, 12)
+    np.testing.assert_array_equal(collated["tp_hard"][:4, 10:], 0)
+    np.testing.assert_array_equal(collated["tp_hard"][4:, :], 1)
+
+
 def test_collate_single_batch():
     """Single batch should collate without error."""
     outputs = [_make_val_output(2)]
