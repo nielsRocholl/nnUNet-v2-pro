@@ -45,7 +45,14 @@ def _collate_prompt_aware_outputs(outputs: List[dict]) -> dict:
         elif np.isscalar(outputs[0][k]) or (isinstance(outputs[0][k], np.ndarray) and outputs[0][k].ndim == 0):
             collated[k] = [o[k] for o in outputs]
         elif isinstance(outputs[0][k], np.ndarray):
-            collated[k] = np.vstack([o[k] for o in outputs])
+            arrs = [o[k] for o in outputs]
+            try:
+                collated[k] = np.vstack(arrs)
+            except ValueError:
+                max_c = max(a.shape[-1] for a in arrs)
+                padded = [np.concatenate([a, np.zeros((*a.shape[:-1], max_c - a.shape[-1]), dtype=a.dtype)], axis=-1)
+                          if a.shape[-1] < max_c else a for a in arrs]
+                collated[k] = np.vstack(padded)
         elif isinstance(outputs[0][k], list):
             collated[k] = [item for o in outputs for item in o[k]]
         else:
