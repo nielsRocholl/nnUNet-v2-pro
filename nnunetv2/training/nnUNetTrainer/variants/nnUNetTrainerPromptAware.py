@@ -19,7 +19,23 @@ from nnunetv2.training.nnUNetTrainer.variants._validation_utils import (
     gather_validation_outputs_ddp,
     log_dice_by_mode,
 )
-from nnunetv2.utilities.collate_outputs import collate_outputs
+def _collate_prompt_aware_outputs(outputs: List[dict]) -> dict:
+    """Collate validation outputs; stacks along sample axis to handle varying batch sizes."""
+    collated = {}
+    for k in outputs[0].keys():
+        if k in ("tp_hard", "fp_hard", "fn_hard"):
+            collated[k] = np.vstack([o[k] for o in outputs])
+        elif k == "mode":
+            collated[k] = np.concatenate([np.atleast_1d(o[k]).flatten() for o in outputs])
+        elif np.isscalar(outputs[0][k]) or (isinstance(outputs[0][k], np.ndarray) and outputs[0][k].ndim == 0):
+            collated[k] = [o[k] for o in outputs]
+        elif isinstance(outputs[0][k], np.ndarray):
+            collated[k] = np.vstack([o[k] for o in outputs])
+        elif isinstance(outputs[0][k], list):
+            collated[k] = [item for o in outputs for item in o[k]]
+        else:
+            raise ValueError(f"Cannot collate {k} of type {type(outputs[0][k])}")
+    return collated
 from nnunetv2.utilities.default_n_proc_DA import get_allowed_n_proc_DA
 from nnunetv2.utilities.roi_config import DEFAULT_CONFIG_PATH, load_config
 
@@ -234,7 +250,7 @@ class nnUNetTrainerPromptAware(nnUNetTrainerPromptChannel):
         }
 
     def on_validation_epoch_end(self, val_outputs: List[dict]) -> None:
-        outputs_collated = collate_outputs(val_outputs)
+        outputs_collated = _collate_prompt_aware_outputs(val_outputs)
         if "mode" not in outputs_collated:
             super().on_validation_epoch_end(val_outputs)
             return

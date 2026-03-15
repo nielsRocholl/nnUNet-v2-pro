@@ -14,7 +14,7 @@
 #SBATCH --gres=gpu:1
 #SBATCH --no-container-entrypoint
 #SBATCH --container-mounts=/data/oncology/experiments/universal-lesion-segmentation:/nnunet_data
-#SBATCH --container-image="dockerdex.umcn.nl:5005/nielsrocholl/nnunet-v2-pro-sol-docker:pro-12"
+#SBATCH --container-image="dockerdex.umcn.nl:5005/nielsrocholl/nnunet-v2-pro-sol-docker:latest"
 
 export PIP_CACHE_DIR=/root/.pip-cache
 mkdir -p "$PIP_CACHE_DIR"
