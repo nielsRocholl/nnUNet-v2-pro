@@ -13,51 +13,56 @@ from nnunetv2.training.nnUNetTrainer.variants.network_architecture.nnUNetTrainer
     nnUNetTrainerPromptChannel,
 )
 from nnunetv2.training.loss.dice import get_tp_fp_fn_tn
+from nnunetv2.utilities.collate_outputs import collate_outputs
 from nnunetv2.training.nnUNetTrainer.variants._validation_utils import (
     MODE_NAMES,
     build_wandb_extended_metrics,
     gather_validation_outputs_ddp,
     log_dice_by_mode,
 )
-def _collate_prompt_aware_outputs(outputs: List[dict]) -> dict:
-    """Collate validation outputs; handles varying batch sizes and class counts (merged datasets)."""
-    collated = {}
-    for k in outputs[0].keys():
-        if k in ("tp_hard", "fp_hard", "fn_hard"):
-            arrs = [o[k] for o in outputs]
-            shapes = [a.shape for a in arrs]
-            max_c = max(a.shape[-1] for a in arrs)
-            if len(set(a.shape[-1] for a in arrs)) > 1:
-                import logging
-                logging.getLogger("nnunet").warning(
-                    f"Validation outputs have varying class dim: {shapes}. "
-                    f"Expected binary (batch,1). Padding to max. Check dataset consistency."
-                )
-            padded = []
-            for a in arrs:
-                if a.shape[-1] < max_c:
-                    pad = np.zeros((*a.shape[:-1], max_c - a.shape[-1]), dtype=a.dtype)
-                    a = np.concatenate([a, pad], axis=-1)
-                padded.append(a)
-            collated[k] = np.vstack(padded)
-        elif k == "mode":
-            collated[k] = np.concatenate([np.atleast_1d(o[k]).flatten() for o in outputs])
-        elif np.isscalar(outputs[0][k]) or (isinstance(outputs[0][k], np.ndarray) and outputs[0][k].ndim == 0):
-            collated[k] = [o[k] for o in outputs]
-        elif isinstance(outputs[0][k], np.ndarray):
-            arrs = [o[k] for o in outputs]
-            try:
-                collated[k] = np.vstack(arrs)
-            except ValueError:
-                max_c = max(a.shape[-1] for a in arrs)
-                padded = [np.concatenate([a, np.zeros((*a.shape[:-1], max_c - a.shape[-1]), dtype=a.dtype)], axis=-1)
-                          if a.shape[-1] < max_c else a for a in arrs]
-                collated[k] = np.vstack(padded)
-        elif isinstance(outputs[0][k], list):
-            collated[k] = [item for o in outputs for item in o[k]]
-        else:
-            raise ValueError(f"Cannot collate {k} of type {type(outputs[0][k])}")
-    return collated
+# def _collate_prompt_aware_outputs(outputs: List[dict]) -> dict:
+#     """Collate validation outputs; handles varying batch sizes and class counts (merged datasets)."""
+#     collated = {}
+#     for k in outputs[0].keys():
+#         if k in ("tp_hard", "fp_hard", "fn_hard"):
+#             arrs = [o[k] for o in outputs]
+#             shapes = [a.shape for a in arrs]
+#             max_c = max(a.shape[-1] for a in arrs)
+#             if len(set(a.shape[-1] for a in arrs)) > 1:
+#                 import logging
+#                 logging.getLogger("nnunet").warning(
+#                     f"Validation outputs have varying class dim: {shapes}. "
+#                     f"Expected binary (batch,1). Padding to max. Check dataset consistency."
+#                 )
+#             padded = []
+#             for a in arrs:
+#                 if a.shape[-1] < max_c:
+#                     pad = np.zeros((*a.shape[:-1], max_c - a.shape[-1]), dtype=a.dtype)
+#                     a = np.concatenate([a, pad], axis=-1)
+#                 padded.append(a)
+#             collated[k] = np.vstack(padded)
+#         elif k == "mode":
+#             collated[k] = np.concatenate([np.atleast_1d(o[k]).flatten() for o in outputs])
+#         elif np.isscalar(outputs[0][k]) or (isinstance(outputs[0][k], np.ndarray) and outputs[0][k].ndim == 0):
+#             collated[k] = [o[k] for o in outputs]
+#         elif isinstance(outputs[0][k], np.ndarray):
+#             arrs = [np.asarray(o[k]) for o in outputs]
+#             try:
+#                 collated[k] = np.vstack(arrs)
+#             except ValueError:
+#                 max_c = max(a.shape[-1] for a in arrs)
+#                 padded = []
+#                 for a in arrs:
+#                     if a.shape[-1] < max_c:
+#                         pad = np.zeros((*a.shape[:-1], max_c - a.shape[-1]), dtype=a.dtype)
+#                         a = np.concatenate([a, pad], axis=-1)
+#                     padded.append(a)
+#                 collated[k] = np.vstack(padded)
+#         elif isinstance(outputs[0][k], list):
+#             collated[k] = [item for o in outputs for item in o[k]]
+#         else:
+#             raise ValueError(f"Cannot collate {k} of type {type(outputs[0][k])}")
+#     return collated
 from nnunetv2.utilities.default_n_proc_DA import get_allowed_n_proc_DA
 from nnunetv2.utilities.roi_config import DEFAULT_CONFIG_PATH, load_config
 
@@ -272,7 +277,8 @@ class nnUNetTrainerPromptAware(nnUNetTrainerPromptChannel):
         }
 
     def on_validation_epoch_end(self, val_outputs: List[dict]) -> None:
-        outputs_collated = _collate_prompt_aware_outputs(val_outputs)
+        # Use default collate (large lesion oversampling disabled via max_extra:0)
+        outputs_collated = collate_outputs(val_outputs)
         if "mode" not in outputs_collated:
             super().on_validation_epoch_end(val_outputs)
             return
