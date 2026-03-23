@@ -1,6 +1,7 @@
 """ROI-mode CLI: prompt-aware inference over dilated bbox only."""
 import argparse
 import os
+from dataclasses import replace
 from time import time as time_func
 
 import numpy as np
@@ -43,6 +44,12 @@ def predict_roi_entry_point():
     parser.add_argument("-nps", type=int, default=_get_default_value("nnUNet_nps", int, 3), help="Export processes.")
     parser.add_argument("--labels_folder", default=None, help="Folder with ground truth for per-case DICE.")
     parser.add_argument("--verbose", action="store_true", help="Verbose output.")
+    parser.add_argument(
+        "--roi_mode",
+        default=None,
+        choices=("dilated_sliding", "per_point_patch"),
+        help="Override inference.roi_inference_mode from config (dilated_sliding | per_point_patch).",
+    )
     args = parser.parse_args()
 
     args.f = [int(x) if x != "all" else x for x in args.f]
@@ -74,6 +81,8 @@ def predict_roi_entry_point():
             device = torch.device("mps")
 
     cfg = load_config(config_path)
+    if args.roi_mode is not None:
+        cfg = replace(cfg, inference=replace(cfg.inference, roi_inference_mode=args.roi_mode))
     tile_step = cfg.inference.tile_step_size
     use_mirroring = not (args.disable_tta or cfg.inference.disable_tta_default)
 

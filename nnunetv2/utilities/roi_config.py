@@ -53,10 +53,16 @@ class PromptConfig:
     prompt_intensity_scale: float
 
 
+RoiInferenceMode = Literal["dilated_sliding", "per_point_patch"]
+
+
 @dataclass(frozen=True)
 class InferenceConfig:
     tile_step_size: float
     disable_tta_default: bool
+    roi_inference_mode: RoiInferenceMode = "dilated_sliding"
+    max_patch_expansion_visits: int = 64
+    max_patch_expansion_depth: Optional[int] = None
 
 
 @dataclass(frozen=True)
@@ -164,7 +170,23 @@ def _load_inference(inf: Optional[dict]) -> InferenceConfig:
         return InferenceConfig(tile_step_size=0.5, disable_tta_default=False)
     tile_step_size = float(inf.get("tile_step_size", 0.5))
     disable_tta_default = bool(inf.get("disable_tta_default", False))
-    return InferenceConfig(tile_step_size=tile_step_size, disable_tta_default=disable_tta_default)
+    mode = inf.get("roi_inference_mode", "dilated_sliding")
+    if mode not in ("dilated_sliding", "per_point_patch"):
+        raise ValueError(f"inference.roi_inference_mode must be 'dilated_sliding' or 'per_point_patch', got {mode!r}")
+    max_visits = int(inf.get("max_patch_expansion_visits", 64))
+    if max_visits < 1:
+        raise ValueError(f"max_patch_expansion_visits must be >= 1, got {max_visits}")
+    depth_raw = inf.get("max_patch_expansion_depth", None)
+    depth = int(depth_raw) if depth_raw is not None else None
+    if depth is not None and depth < 0:
+        raise ValueError(f"max_patch_expansion_depth must be >= 0 or null, got {depth}")
+    return InferenceConfig(
+        tile_step_size=tile_step_size,
+        disable_tta_default=disable_tta_default,
+        roi_inference_mode=mode,
+        max_patch_expansion_visits=max_visits,
+        max_patch_expansion_depth=depth,
+    )
 
 
 def _load_size_bins(sb: Optional[dict]) -> Optional[SizeBinsConfig]:

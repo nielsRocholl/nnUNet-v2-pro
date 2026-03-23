@@ -75,9 +75,10 @@ TRAIN_CMD=(
   --npz
   --use-wandb
   --wandb-project "nnunet-pro-999"
+  --epochs 2000
+  --c
   -device cuda
 )
-[[ -n "${RESUME:-}" ]] && TRAIN_CMD+=(--c)
 echo "Running: ${TRAIN_CMD[*]}"
 "${TRAIN_CMD[@]}"
 EXIT=$?

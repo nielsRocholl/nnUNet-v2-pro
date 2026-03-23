@@ -122,6 +122,24 @@ nnUNetv2_predict_roi -i INPUT_FOLDER -o OUTPUT_FOLDER -m MODEL_FOLDER \
 | `-f` | No | Folds (default: 0) |
 | `-chk` | No | Checkpoint name (default: checkpoint_final.pth) |
 | `-device` | No | `cuda`, `cpu`, or `mps` |
+| `--roi_mode` | No | Override `inference.roi_inference_mode`: `dilated_sliding` (default) or `per_point_patch` |
+
+### ROI inference modes (`inference` config)
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `roi_inference_mode` | `dilated_sliding` | `dilated_sliding`: one full-volume 2-channel prompt, sliding windows only over dilated bbox (existing behavior). `per_point_patch`: one local 2-channel prompt per forward, patch centered on each point, optional border expansion. |
+| `max_patch_expansion_visits` | `64` | Max number of patch forwards per fold (seeds + expansions). When reached, expansion stops; with `--verbose`, a one-line notice is printed. |
+| `max_patch_expansion_depth` | omitted | Optional max BFS depth from each seed; omit for no depth limit. |
+
+**`per_point_patch` behavior (summary)**
+
+1. Image is padded with `pad_nd_image` (image channels only). All patch indices use this **padded** grid; logits are cropped back before export (same world space as standard ROI).
+2. Each seed point gets a `patch_size` window centered on the point (clamped at borders). Duplicate identical `(window, point)` pairs are skipped.
+3. Empty `points` list: one centered patch with **zero** prompt channels (same spirit as empty prompt in dilated mode).
+4. Each forward uses `encode_points_to_heatmap_pair` on **patch-local** coordinates (seed inside the patch, else patch center).
+5. Predictions are merged with the same Gaussian weighting as nnU-Net sliding windows. Voxels never covered get **background-preferring** logits (no NaNs).
+6. If foreground touches a **face** of the current patch (per `label_manager`), extra windows are queued, shifted by `patch_size//2` along that axis (outward), clamped. TTA matches existing ROI (`_internal_maybe_mirror_and_predict`).
 
 ### points.json format
 
@@ -150,14 +168,16 @@ nnUNetv2_predict_roi -i $nnUNet_raw/Dataset010/imagesTr -o ./predictions_roi \
 
 If the model was trained with prompt-aware, the config is in the model folder and `--config` can be omitted.
 
-### How inference works
+### How inference works (`dilated_sliding`, default)
 
 1. **Preprocessing**: Same as standard nnU-Net (resampling, normalization).
-2. **Prompt heatmap**: Points are encoded into a 2-channel heatmap (pos + zeros for neg; radius `point_radius_vox`, encoding from config).
+2. **Prompt heatmap**: All points are encoded into **one** full-volume 2-channel heatmap (pos + zeros for neg; radius `point_radius_vox`, encoding from config).
 3. **Dilated bbox**: Bbox around prompt extent + `patch_size/2` per axis, clamped to image.
 4. **Sliding windows**: Only windows overlapping this bbox are used.
 5. **Single patch**: If the dilated bbox is smaller than the patch, a single centered patch is used.
 6. **No full-volume sliding**: ROI mode never runs full-volume sliding.
+
+For **`per_point_patch`**, see the table above (local prompts, queue + border expansion, Gaussian merge, safe background fill outside tiled regions).
 
 ---
 

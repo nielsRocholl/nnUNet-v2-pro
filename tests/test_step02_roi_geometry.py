@@ -42,8 +42,8 @@ def _center_crop_bbox(center_zyx, patch_size, shape):
 
 def test_load_config():
     cfg = load_config(FIXTURE_CONFIG)
-    assert cfg.prompt.point_radius_vox == 5
-    assert cfg.prompt.encoding == "binary"
+    assert cfg.prompt.point_radius_vox == 2
+    assert cfg.prompt.encoding == "edt"
 
 
 def test_points_to_centers_voxel():
