@@ -81,6 +81,22 @@ nnUNetv2_train DATASET_ID 3d_fullres FOLD -tr nnUNetTrainerPromptAware -p nnUNet
 
 The config is copied into the model folder as `nnunet_pro_config.json`, so inference can use it without `--config`.
 
+### Stretched-tail poly learning rate (optional)
+
+`nnUNetTrainerPromptAware` uses the default nnU-Net optimizer path (`nnUNetTrainer.configure_optimizers`). You can switch the LR schedule with **PRO** CLI flags:
+
+- `--lr-schedule poly` (default) — standard polynomial decay over `num_epochs`.
+- `--lr-schedule stretched_tail_poly` — same poly curve as if training for `--lr-stretched-ref` steps until epoch `--lr-stretched-k`, then a linear segment to the poly LR at `ref - 1`, stretched over the remaining epochs. Defaults: `--lr-stretched-k 750`, `--lr-stretched-ref 1000`, `--lr-stretched-exp 0.9`.
+
+Example:
+
+```bash
+nnUNetv2_train DATASET_ID 3d_fullres FOLD -tr nnUNetTrainerPromptAware -p nnUNetResEncUNetLPlans \
+  --lr-schedule stretched_tail_poly --epochs 2000
+```
+
+Trainers that **override** `configure_optimizers` (e.g. Adam, cosine, Primus/warmup) are unchanged by these flags. When continuing with `--c`, use the same `--lr-schedule` and stretched-tail arguments as the original run.
+
 ### 3. What the trainer does
 
 - **Network**: Same architecture as nnU-Net, but with `num_input_channels + 2` (image + pos prompt + neg prompt).

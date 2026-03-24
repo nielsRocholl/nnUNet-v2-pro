@@ -174,7 +174,11 @@ def run_training(dataset_name_or_id: Union[str, int],
                  wandb_tags: List[str] = None,
                  config_path: Optional[str] = None,
                  num_epochs: Optional[int] = None,
-                 num_iterations_per_epoch: Optional[int] = None):
+                 num_iterations_per_epoch: Optional[int] = None,
+                 lr_schedule_name: str = "poly",
+                 stretched_tail_k_transition: int = 750,
+                 stretched_tail_ref_poly_steps: int = 1000,
+                 stretched_tail_exponent: float = 0.9):
     if plans_identifier == 'nnUNetPlans':
         print("\n############################\n"
               "INFO: You are using the old nnU-Net default plans. We have updated our recommendations. "
@@ -232,6 +236,11 @@ def run_training(dataset_name_or_id: Union[str, int],
         if num_iterations_per_epoch is not None:
             nnunet_trainer.num_iterations_per_epoch = num_iterations_per_epoch
             nnunet_trainer.num_val_iterations_per_epoch = max(1, num_iterations_per_epoch // 5)
+        nnunet_trainer.lr_schedule_name = lr_schedule_name
+        if lr_schedule_name == "stretched_tail_poly":
+            nnunet_trainer.stretched_tail_k_transition = stretched_tail_k_transition
+            nnunet_trainer.stretched_tail_ref_poly_steps = stretched_tail_ref_poly_steps
+            nnunet_trainer.stretched_tail_exponent = stretched_tail_exponent
 
         assert not (continue_training and only_run_validation), f'Cannot set --c and --val flag at the same time. Dummy.'
 
@@ -279,6 +288,16 @@ def run_training_entry():
                         help='[OPTIONAL] Override number of training epochs (for overfit testing).')
     parser.add_argument('--steps', type=int, required=False, default=None,
                         help='[PRO] Override iterations per epoch (for quick testing). Default: 250.')
+    parser.add_argument('--lr-schedule', type=str, required=False, default='poly',
+                        choices=['poly', 'stretched_tail_poly'],
+                        help='[PRO] Learning rate schedule. Default poly (nnU-Net). stretched_tail_poly: poly head '
+                             'then linear tail to end of training (see StretchedTailPolyLRScheduler).')
+    parser.add_argument('--lr-stretched-k', type=int, required=False, default=750,
+                        help='[PRO] Stretched-tail poly: transition epoch k (0 < k < ref). Default 750.')
+    parser.add_argument('--lr-stretched-ref', type=int, required=False, default=1000,
+                        help='[PRO] Stretched-tail poly: reference poly max_steps. Default 1000.')
+    parser.add_argument('--lr-stretched-exp', type=float, required=False, default=0.9,
+                        help='[PRO] Stretched-tail poly: poly exponent. Default 0.9.')
     parser.add_argument('-p', type=str, required=False, default='nnUNetPlans',
                         help='[OPTIONAL] Use this flag to specify a custom plans identifier. Default: nnUNetPlans')
     parser.add_argument('-pretrained_weights', type=str, required=False, default=None,
@@ -339,7 +358,9 @@ def run_training_entry():
                  args.num_gpus, args.npz, args.c, args.val, args.disable_checkpointing, args.val_best,
                  device=device, use_wandb=use_wandb, wandb_project=args.wandb_project,
                  wandb_entity=args.wandb_entity, wandb_run_name=args.wandb_run_name, wandb_tags=wandb_tags,
-                 config_path=args.config, num_epochs=args.epochs, num_iterations_per_epoch=args.steps)
+                 config_path=args.config, num_epochs=args.epochs, num_iterations_per_epoch=args.steps,
+                 lr_schedule_name=args.lr_schedule, stretched_tail_k_transition=args.lr_stretched_k,
+                 stretched_tail_ref_poly_steps=args.lr_stretched_ref, stretched_tail_exponent=args.lr_stretched_exp)
 
 
 if __name__ == '__main__':

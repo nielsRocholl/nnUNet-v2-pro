@@ -7,6 +7,8 @@ from pathlib import Path
 
 import numpy as np
 import pytest
+import torch
+import torch.nn as nn
 
 if "nnUNet_raw" not in os.environ:
     _base = "/Users/nielsrocholl/Documents/PhD DIAG - Local/Data/dummy datasets"
@@ -17,6 +19,8 @@ if "nnUNet_raw" not in os.environ:
 from batchgenerators.utilities.file_and_folder_operations import join, load_json, load_pickle, maybe_mkdir_p, save_json
 
 from nnunetv2.run.run_training import get_trainer_from_args
+from nnunetv2.training.lr_scheduler.stretched_tail_polylr import StretchedTailPolyLRScheduler
+from nnunetv2.training.nnUNetTrainer.nnUNetTrainer import nnUNetTrainer
 from nnunetv2.utilities.plans_handling.plans_handler import PlansManager
 
 STEP08_OUTPUT_DIR = "tests/outputs/step08"
@@ -67,6 +71,31 @@ def test_roi_cli_points_json_required():
     with pytest.raises(SystemExit):
         predict_roi_entry_point()
     sys.argv = old_argv
+
+
+def test_configure_optimizers_stretched_tail_poly():
+    """Trainers using default configure_optimizers can select StretchedTailPolyLRScheduler via attributes."""
+    if not os.path.isfile(PLANS_PATH):
+        pytest.skip("nnUNetPlans.json not found")
+    dataset_json_path = join(os.path.dirname(PLANS_PATH), "dataset.json")
+    if not os.path.isfile(dataset_json_path):
+        pytest.skip("dataset.json not found")
+    plans = load_json(PLANS_PATH)
+    dataset_json = load_json(dataset_json_path)
+    trainer = nnUNetTrainer(plans, "3d_fullres", 0, dataset_json, device=torch.device("cpu"))
+    trainer.lr_schedule_name = "stretched_tail_poly"
+    trainer.num_epochs = 500
+    trainer.stretched_tail_k_transition = 50
+    trainer.stretched_tail_ref_poly_steps = 100
+
+    class _TinyNet(nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.p = nn.Parameter(torch.zeros(1))
+
+    trainer.network = _TinyNet()
+    _opt, sched = trainer.configure_optimizers()
+    assert isinstance(sched, StretchedTailPolyLRScheduler)
 
 
 def test_training_cli_works_without_config_for_prompt_aware():

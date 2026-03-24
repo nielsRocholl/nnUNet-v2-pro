@@ -65,6 +65,7 @@ echo "Found $n_files .b2nd files on compute node."
 export nnUNet_preprocessed="$LOCAL_PREP"
 
 # Use array to avoid backslash-continuation bugs (trailing \ would append next line as args)
+# Stretched-tail poly LR; tune: --lr-stretched-k --lr-stretched-ref --lr-stretched-exp
 TRAIN_CMD=(
   nnUNetv2_train
   999
@@ -72,10 +73,10 @@ TRAIN_CMD=(
   0
   -tr nnUNetTrainerPromptAware
   -p nnUNetResEncUNetLPlans_h200
-  --npz
   --use-wandb
   --wandb-project "nnunet-pro-999"
-  --epochs 2000
+  --epochs 2500
+  --lr-schedule stretched_tail_poly
   --c
   -device cuda
 )
