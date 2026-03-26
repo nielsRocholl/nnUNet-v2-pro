@@ -178,8 +178,12 @@ class nnUNetPromptAwareDataLoader(nnUNetDataLoader):
         patch_size = tuple(self.patch_size)
         extra_data_list, extra_seg_list, extra_keys_list = [], [], []
         for case_id in selected_keys:
-            data, seg, seg_prev, _ = self._data.load_case(case_id)
-            bboxes = get_lesion_bboxes_zyx(seg)
+            data, seg, seg_prev, properties = self._data.load_case(case_id)
+            bboxes = properties.get("bboxes_zyx")
+            if bboxes is None:
+                bboxes = get_lesion_bboxes_zyx(seg)
+            else:
+                bboxes = [tuple(int(x) for x in b) for b in bboxes]
             all_centers: List[Tuple[int, int, int]] = []
             for bbox in bboxes:
                 if not is_large_lesion(bbox, patch_size):
@@ -212,7 +216,11 @@ class nnUNetPromptAwareDataLoader(nnUNetDataLoader):
                 sly = slice(bbox_lbs[1], bbox_ubs[1])
                 slx = slice(bbox_lbs[2], bbox_ubs[2])
                 patch_slices = (slz, sly, slx)
-                centroids = extract_centroids_from_seg(seg_crop)
+                raw_c = properties.get("centroids_zyx")
+                if raw_c is None:
+                    centroids = extract_centroids_from_seg(seg_crop)
+                else:
+                    centroids = [tuple(int(x) for x in c) for c in raw_c]
                 points = filter_centroids_in_patch(centroids, patch_slices)
                 if not points:
                     les = _lesion_voxels(seg_crop)
@@ -290,7 +298,11 @@ class nnUNetPromptAwareDataLoader(nnUNetDataLoader):
                 points_neg = _sample_spurious(seg_crop, n_neg)
                 points_pos = []
             else:
-                centroids = extract_centroids_from_seg(seg_crop)
+                raw_c = properties.get("centroids_zyx")
+                if raw_c is None:
+                    centroids = extract_centroids_from_seg(seg_crop)
+                else:
+                    centroids = [tuple(int(x) for x in c) for c in raw_c]
                 points_pos = filter_centroids_in_patch(centroids, patch_slices)
                 if not points_pos:
                     les = _lesion_voxels(seg_crop)

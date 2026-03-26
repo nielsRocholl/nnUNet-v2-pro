@@ -1,3 +1,4 @@
+import os
 import warnings
 from typing import List, Type, Optional, Tuple, Union
 
@@ -193,6 +194,11 @@ def preprocess_dataset(dataset_id: int,
                 )
                 stats_path = join(nnUNet_preprocessed, dataset_name, f"case_stats_{c}.json")
                 save_case_stats(case_stats, stats_path, size_bins_config=size_bins_config)
+
+            from nnunetv2.preprocessing.precompute_centroids import precompute_centroids_for_folder
+            out_dir = join(nnUNet_preprocessed, dataset_name, configuration_manager.data_identifier)
+            if os.path.isdir(out_dir):
+                precompute_centroids_for_folder(out_dir, num_processes=max(1, n), resume=resume)
 
 
 def preprocess(dataset_ids: List[int],

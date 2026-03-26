@@ -1,4 +1,5 @@
 """Prompt extraction and encoding: centroids from seg → heatmap channel [0,1]."""
+from functools import lru_cache
 from typing import List, Tuple, Union
 
 import numpy as np
@@ -58,6 +59,7 @@ def filter_centroids_in_patch(
     return out
 
 
+@lru_cache(maxsize=16)
 def _build_ball_strel(radius: int, use_edt: bool) -> torch.Tensor:
     b = ball(radius, strict_radius=False)
     strel = torch.from_numpy(b.astype(np.float32))

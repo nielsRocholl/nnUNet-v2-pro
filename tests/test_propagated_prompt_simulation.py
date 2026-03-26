@@ -74,7 +74,7 @@ def test_config_defaults_when_propagated_absent():
                 "mode_probs": [0.5, 0.2, 0.15, 0.15],
                 "n_spur": [1, 2],
                 "n_neg": [1, 3],
-                "large_lesion": {"K": 2, "K_min": 1, "K_max": 4, "max_extra": 3},
+                "large_lesion": {"K": 2, "K_min": 1, "K_max": 4, "max_extra": 0},
             },
             "inference": {"tile_step_size": 0.75, "disable_tta_default": False},
         }

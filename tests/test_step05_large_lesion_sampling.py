@@ -26,6 +26,9 @@ from nnunetv2.utilities.roi_config import load_config
 
 STEP05_OUTPUT_DIR = "tests/outputs/step05"
 FIXTURE_CONFIG = join(Path(__file__).resolve().parent, "fixtures", "nnunet_pro_config.json")
+FIXTURE_LARGE_LESION = join(
+    Path(__file__).resolve().parent, "fixtures", "nnunet_pro_config_large_lesion_for_tests.json"
+)
 DUMMY_BASE = "/Users/nielsrocholl/Documents/PhD DIAG - Local/Data/dummy datasets"
 PREPROCESSED_DIR_FULLRES = join(
     os.environ.get("nnUNet_preprocessed", join(DUMMY_BASE, "nnUNet_preprocessed")),
@@ -51,7 +54,12 @@ def test_config_load():
     assert ll.K == (2, 2)
     assert ll.K_min == 1
     assert ll.K_max == 4
-    assert ll.max_extra == 3
+    assert ll.max_extra == 0
+
+
+def test_large_lesion_fixture_max_extra_enabled():
+    cfg = load_config(FIXTURE_LARGE_LESION)
+    assert cfg.sampling.large_lesion.max_extra == 3
 
 
 def test_get_lesion_bboxes_zyx():
@@ -111,7 +119,7 @@ def _make_synthetic_large_lesion_case(tmpdir, shape, patch_size, lesion_slice):
 def test_dataloader_adds_extra_patches():
     if not os.path.isfile(PLANS_PATH):
         pytest.skip("nnUNetPlans.json not found")
-    cfg = load_config(FIXTURE_CONFIG)
+    cfg = load_config(FIXTURE_LARGE_LESION)
     patch_size = (48, 192, 192)
     shape = (80, 256, 256)
     lesion_slice = (slice(10, 70), slice(20, 240), slice(20, 240))
@@ -133,7 +141,7 @@ def test_dataloader_adds_extra_patches():
             n = batch["data"].shape[0]
             if n > 1:
                 found_extras = True
-                assert batch["data"].shape[1] == 2
+                assert batch["data"].shape[1] == 3
                 assert batch["target"].shape[0] == n
                 for b in range(n):
                     assert batch["data"][b, -1].min() >= 0 and batch["data"][b, -1].max() <= 1.01
@@ -179,7 +187,7 @@ def test_step05_visual_output():
     """Save NIfTIs for CT viewer. Uses real preprocessed data from nnUNet_preprocessed/Dataset010."""
     if not os.path.isfile(PLANS_PATH):
         pytest.skip("nnUNetPlans.json not found")
-    cfg = load_config(FIXTURE_CONFIG)
+    cfg = load_config(FIXTURE_LARGE_LESION)
     plans = load_json(PLANS_PATH)
 
     batch, ds, config_name = None, None, None

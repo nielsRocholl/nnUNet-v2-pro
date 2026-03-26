@@ -272,6 +272,11 @@ def run_training(dataset_name_or_id: Union[str, int],
 
 
 def run_training_entry():
+    os.environ.setdefault('OMP_NUM_THREADS', '1')
+    os.environ.setdefault('MKL_NUM_THREADS', '1')
+    os.environ.setdefault('OPENBLAS_NUM_THREADS', '1')
+    os.environ.setdefault('TORCHINDUCTOR_COMPILE_THREADS', '1')
+
     import argparse
     parser = argparse.ArgumentParser()
     parser.add_argument('dataset_name_or_id', type=str,

@@ -32,7 +32,7 @@ All tunable parameters live in a single JSON config. Use `tests/fixtures/nnunet_
     "mode_probs": [0.35, 0.15, 0.15, 0.35],
     "n_spur": [1, 2],
     "n_neg": [1, 3],
-    "large_lesion": {"K": 2, "K_min": 1, "K_max": 4, "max_extra": 3},
+    "large_lesion": {"K": 2, "K_min": 1, "K_max": 4, "max_extra": 0},
     "propagated": {"sigma_per_axis": [2.75, 5.19, 5.40], "max_vox": 34.0}
   },
   "inference": {
@@ -52,13 +52,21 @@ All tunable parameters live in a single JSON config. Use `tests/fixtures/nnunet_
 
 `sampling.propagated` (optional): `sigma_per_axis` `[σ_z, σ_y, σ_x]`, `max_vox` — offset distribution for simulated propagated prompts (defaults from longitudinal COG analysis).
 
+### Large-lesion oversampling (`sampling.large_lesion.max_extra`)
+
+Keep **`max_extra` at `0`** for real training. The code can append extra positive patches per step when `max_extra > 0`, which changes the **effective batch size** from step to step. That breaks trainers and models that assume a **fixed** batch shape (including fixed validation batches). The bundled default and the main test fixture use `max_extra: 0`. A separate test-only config enables extras for unit tests only.
+
+### Offline centroids
+
+After preprocessing, each case should have **`{case}_centroids.json`** next to `{case}_seg.b2nd` (written automatically by `nnUNetv2_plan_and_preprocess`, or via the standalone `nnUNetv2_precompute_centroids` CLI). See [precompute_centroids.md](precompute_centroids.md).
+
 ---
 
 ## Training
 
 ### 1. Standard preprocessing
 
-Run nnU-Net preprocessing as usual. ResEnc L is recommended:
+Run nnU-Net preprocessing as usual. ResEnc L is recommended. Centroid JSON files are written automatically at the end of each configuration stage:
 
 ```bash
 nnUNetv2_plan_and_preprocess -d DATASET_ID -pl nnUNetPlannerResEncL -c 3d_fullres
@@ -110,7 +118,7 @@ Trainers that **override** `configure_optimizers` (e.g. Adam, cosine, Primus/war
 
 - **Patch sampling**: Foreground patches use overlap sampling — the lesion may lie anywhere in the patch, not necessarily centered.
 
-- **Large lesions**: Lesions larger than the patch get extra positive patches to reduce truncation bias.
+- **Large lesions**: The config still contains `large_lesion` (K, bbox logic). **Do not enable extra-patch oversampling** (`max_extra > 0`); see the configuration section above.
 - **Validation**: Uses the same patch distribution (mode_probs) and prompts as training when `validation_use_prompt=true`. Per-mode Dice (pos, pos_spur, pos_no_prompt, neg, global) logged to WandB/logger.
 - **Loss**: Standard nnU-Net Dice + cross-entropy.
 

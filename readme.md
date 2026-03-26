@@ -58,7 +58,8 @@ A complete prompt-aware extension for lesion segmentation:
 - **Coordinate handling** — Voxel or world-space points, converted to preprocessed `(z,y,x)`
 - **Prompt encoding** — Lesion centroids → heatmap (binary or EDT), merged with `torch.maximum`
 - **Prompt-aware training** — Four sampling modes (pos, pos+spurious, pos+no-prompt, negative) to handle noisy/missing prompts
-- **Large-lesion sampling** — Extra patches for lesions larger than one patch to reduce truncation bias
+- **Large-lesion config** — Bbox/centroid helpers for giant lesions; **keep `max_extra: 0`** (extra-patch oversampling varies batch size and breaks fixed-batch training/validation). See the prompt-aware guide.
+- **Precomputed centroids** — `{case}_centroids.json` next to each `*_seg.b2nd` (auto after preprocess or `nnUNetv2_precompute_centroids`). See [documentation/pro/precompute_centroids.md](documentation/pro/precompute_centroids.md).
 - **nnUNetTrainerPromptAware** — Trainer variant wiring the prompt-aware dataloader; keeps standard Dice+CE loss
 - **ROI-only inference** — Sliding windows over dilated bbox only (no full-volume sliding)
 - **CLI** — `nnUNetv2_predict_roi` with `--config`, `--points_json`, optional `--points_space`

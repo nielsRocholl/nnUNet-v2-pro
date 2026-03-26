@@ -1,3 +1,4 @@
+import json
 import os
 import warnings
 from abc import ABC, abstractmethod
@@ -148,6 +149,10 @@ class nnUNetDatasetBlosc2(nnUNetBaseDataset):
             seg_prev = None
 
         properties = load_pickle(join(self.source_folder, identifier + '.pkl'))
+        cj = join(self.source_folder, identifier + '_centroids.json')
+        if isfile(cj):
+            with open(cj, encoding='utf-8') as f:
+                properties = {**properties, **json.load(f)}
         return data, seg, seg_prev, properties
 
     @staticmethod

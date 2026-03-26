@@ -21,7 +21,12 @@ mkdir -p "$PIP_CACHE_DIR"
 
 export nnUNet_raw=/nnunet_data/nnUNet_raw
 export nnUNet_results=/nnunet_data/nnUNet_results
-export nnUNet_n_proc_DA=16
+export nnUNet_n_proc_DA=24
+
+export OMP_NUM_THREADS=1
+export MKL_NUM_THREADS=1
+export OPENBLAS_NUM_THREADS=1
+export TORCHINDUCTOR_COMPILE_THREADS=1
 
 copy_results_on_exit() {
   echo "Creating safety copy of nnUNet_results..."
