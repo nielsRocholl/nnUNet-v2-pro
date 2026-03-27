@@ -310,10 +310,8 @@ file_ending_dataset_mapping = {
 
 def infer_dataset_class(folder: str) -> Union[Type[nnUNetDatasetBlosc2], Type[nnUNetDatasetNumpy]]:
     file_endings = set([os.path.basename(i).split('.')[-1] for i in subfiles(folder, join=False)])
-    if 'pkl' in file_endings:
-        file_endings.remove('pkl')
-    if 'npy' in file_endings:
-        file_endings.remove('npy')
+    for ext in ('pkl', 'npy', 'json'):
+        file_endings.discard(ext)
     assert len(file_endings) == 1, (f'Found more than one file ending in the folder {folder}. '
                                     f'Unable to infer nnUNetDataset variant!')
     return file_ending_dataset_mapping[list(file_endings)[0]]
