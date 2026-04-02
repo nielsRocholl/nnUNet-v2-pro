@@ -3,9 +3,8 @@ from typing import List, Tuple, Union
 
 import numpy as np
 import torch
-from threadpoolctl import threadpool_limits
-
 from acvl_utils.cropping_and_padding.bounding_boxes import crop_and_pad_nd
+from threadpoolctl import threadpool_limits
 
 from nnunetv2.training.dataloading.data_loader import nnUNetDataLoader
 from nnunetv2.training.dataloading.nnunet_dataset import nnUNetBaseDataset
@@ -15,12 +14,12 @@ from nnunetv2.utilities.large_lesion_sampling import (
     is_large_lesion,
     sample_extra_centers_for_large_lesion,
 )
-from nnunetv2.utilities.propagated_prompt_simulation import apply_propagation_offset
 from nnunetv2.utilities.prompt_encoding import (
     encode_points_to_heatmap_pair,
     extract_centroids_from_seg,
     filter_centroids_in_patch,
 )
+from nnunetv2.utilities.propagated_prompt_simulation import apply_propagation_offset
 from nnunetv2.utilities.roi_config import RoiPromptConfig
 
 MODE_POS, MODE_POS_SPUR, MODE_POS_NO_PROMPT, MODE_NEG = 0, 1, 2, 3

@@ -1,16 +1,30 @@
 import argparse
 import multiprocessing
 import shutil
-from typing import Union, Tuple, List, Callable
+from typing import Callable, List, Tuple, Union
 
 import numpy as np
 from acvl_utils.morphology.morphology_helper import remove_all_but_largest_component
-from batchgenerators.utilities.file_and_folder_operations import load_json, subfiles, maybe_mkdir_p, join, isfile, \
-    isdir, save_pickle, load_pickle, save_json
+from batchgenerators.utilities.file_and_folder_operations import (
+    isdir,
+    isfile,
+    join,
+    load_json,
+    load_pickle,
+    maybe_mkdir_p,
+    save_json,
+    save_pickle,
+    subfiles,
+)
+
 from nnunetv2.configuration import default_num_processes
 from nnunetv2.evaluation.accumulate_cv_results import accumulate_cv_results
-from nnunetv2.evaluation.evaluate_predictions import region_or_label_to_mask, compute_metrics_on_folder, \
-    load_summary_json, label_or_region_to_key
+from nnunetv2.evaluation.evaluate_predictions import (
+    compute_metrics_on_folder,
+    label_or_region_to_key,
+    load_summary_json,
+    region_or_label_to_mask,
+)
 from nnunetv2.imageio.base_reader_writer import BaseReaderWriter
 from nnunetv2.paths import nnUNet_raw
 from nnunetv2.utilities.file_path_utilities import folds_tuple_to_string
@@ -96,8 +110,8 @@ def determine_postprocessing(folder_predictions: str,
     ref_files = subfiles(folder_ref, suffix=dataset_json['file_ending'], join=False)
     # we should print a warning if not all files from folder_ref are present in folder_predictions
     if not all([i in predicted_files for i in ref_files]):
-        print(f'WARNING: Not all files in folder_ref were found in folder_predictions. Determining postprocessing '
-              f'should always be done on the entire dataset!')
+        print('WARNING: Not all files in folder_ref were found in folder_predictions. Determining postprocessing '
+              'should always be done on the entire dataset!')
 
     # before we start we should evaluate the imaegs in the source folder
     if not isfile(join(folder_predictions, 'summary.json')):
@@ -161,7 +175,7 @@ def determine_postprocessing(folder_predictions: str,
             pp_fns.append(pp_fn)
             pp_fn_kwargs.append(kwargs)
         else:
-            print(f'Removing all but the largest foreground region did not improve results!')
+            print('Removing all but the largest foreground region did not improve results!')
             source = folder_predictions
 
         # in the old nnU-Net we could just apply all-but-largest component removal to all classes at the same time and

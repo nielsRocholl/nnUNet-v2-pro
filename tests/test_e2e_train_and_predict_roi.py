@@ -13,7 +13,7 @@ if "nnUNet_raw" not in os.environ:
     os.environ["nnUNet_preprocessed"] = os.path.join(_base, "nnUNet_preprocessed")
     os.environ["nnUNet_results"] = os.path.join(_base, "nnUNet_results")
 
-from batchgenerators.utilities.file_and_folder_operations import join, load_json, load_pickle, maybe_mkdir_p
+from batchgenerators.utilities.file_and_folder_operations import join, load_json, maybe_mkdir_p
 
 from nnunetv2.run.run_training import run_training
 from nnunetv2.utilities.file_path_utilities import get_output_folder
@@ -80,7 +80,10 @@ def test_e2e_train_overfit_and_roi_predict():
     maybe_mkdir_p(out_dir)
     points_path = join(out_dir, "points.json")
     with open(points_path, "w") as f:
-        json.dump({"points": [list(center)], "points_space": "voxel"}, f)
+        json.dump(
+            {"points": [list(center)], "points_space": "voxel", "voxel_coordinate_frame": "preprocessed"},
+            f,
+        )
 
     old_argv = sys.argv
     sys.argv = [

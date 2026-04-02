@@ -1,20 +1,16 @@
 import json
+import math
 import os
-import warnings
 from abc import ABC, abstractmethod
 from copy import deepcopy
-from functools import lru_cache
-from typing import List, Union, Type, Tuple
+from typing import List, Tuple, Type, Union
 
-import numpy as np
 import blosc2
-import shutil
-from blosc2 import Filter, Codec
+import numpy as np
+from batchgenerators.utilities.file_and_folder_operations import isfile, join, load_pickle, subfiles, write_pickle
 
-from batchgenerators.utilities.file_and_folder_operations import join, load_pickle, isfile, write_pickle, subfiles
 from nnunetv2.configuration import default_num_processes
 from nnunetv2.training.dataloading.utils import unpack_dataset
-import math
 
 
 class nnUNetBaseDataset(ABC):

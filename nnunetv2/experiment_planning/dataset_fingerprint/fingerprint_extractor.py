@@ -1,14 +1,14 @@
 import multiprocessing
 import os
 from time import sleep
-from typing import List, Type, Union, Optional
+from typing import List, Optional, Type, Union
 
 import numpy as np
-from batchgenerators.utilities.file_and_folder_operations import load_json, join, save_json, isfile, maybe_mkdir_p
+from batchgenerators.utilities.file_and_folder_operations import isfile, join, load_json, maybe_mkdir_p, save_json
 
 from nnunetv2.imageio.base_reader_writer import BaseReaderWriter
 from nnunetv2.imageio.reader_writer_registry import determine_reader_writer_from_dataset_json
-from nnunetv2.paths import nnUNet_raw, nnUNet_preprocessed
+from nnunetv2.paths import nnUNet_preprocessed, nnUNet_raw
 from nnunetv2.preprocessing.cropping.cropping import crop_to_nonzero
 from nnunetv2.utilities.dataset_name_id_conversion import maybe_convert_to_dataset_name
 from nnunetv2.utilities.utils import get_filenames_of_train_images_and_targets

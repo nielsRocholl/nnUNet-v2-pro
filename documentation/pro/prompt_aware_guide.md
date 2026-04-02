@@ -10,7 +10,7 @@ The extension adds:
 2. **Prompt-aware training** — Patches sampled with different prompt conditions (clean, noisy, missing, negative)
 3. **ROI-only inference** — Sliding windows only over a dilated region around the prompt, never full-volume
 
-Standard nnU-Net workflows (preprocessing, default training, standard inference) are unchanged. The prompt-aware path is opt-in via `nnUNetTrainerPromptAware` and `nnUNetv2_predict_roi`.
+Standard nnU-Net workflows (preprocessing, default training, standard inference) are unchanged. The prompt-aware path is opt-in via `nnUNetTrainerPromptAware` and the Pro CLIs `nnUNetv2_predict_roi` / `nnUNetv2_predict_single_patch`.
 
 ---
 
@@ -148,6 +148,45 @@ nnUNetv2_predict_roi -i INPUT_FOLDER -o OUTPUT_FOLDER -m MODEL_FOLDER \
 | `-device` | No | `cuda`, `cpu`, or `mps` |
 | `--roi_mode` | No | Override `inference.roi_inference_mode`: `dilated_sliding` (default) or `per_point_patch` |
 
+### CLI: nnUNetv2_predict_single_patch
+
+Full-case preprocessing and export match `nnUNetv2_predict_roi`, but the **core** inference differs: there is **no** dilated-bbox sliding window—always **exactly one** network tile centered on the given point. By default both prompt channels in that tile are **zero** (training mode `pos_no_prompt`). With **`--encode_prompt`**, the point is encoded in-patch using the same heatmap machinery as ROI `per_point_patch` (`prompt.point_radius_vox`, `prompt.encoding`, `prompt.prompt_intensity_scale` in `nnunet_pro_config.json`). Requires **exactly one** point in the chosen point payload (file, inline JSON, or `--point_zyx`).
+
+```bash
+nnUNetv2_predict_single_patch -i INPUT_FOLDER -o OUTPUT_FOLDER -m MODEL_FOLDER \
+  --points_json points.json [--config CONFIG] [--points_space voxel|world] [--encode_prompt]
+```
+
+| Argument | Required | Description |
+|----------|----------|-------------|
+| `-i` | Yes | Input folder or file (same channel layout as training) |
+| `-o` | Yes | Output folder (full-volume segmentation in original space; only the patch region is informed) |
+| `-m` | Yes | Model folder (nnUNetTrainerPromptAware) |
+| `--points_json` | Yes* | Path to JSON with **exactly one** point, or `-` for stdin (*or use `--points_inline` / `--point_zyx`, or `--stdin_loop` for per-line stdin) |
+| `--config` | No | Default: `{model_folder}/nnunet_pro_config.json` (TTA default and `prompt.*` when `--encode_prompt`) |
+| `--encode_prompt` | No | If set, patch-local pos heatmap from config; default is zero prompts |
+| `--points_space` | No | Override `points_space` from JSON |
+| `--disable_tta` | No | Disable mirroring TTA |
+| `--labels_folder` | No | Ground truth folder for per-case DICE |
+| `-f` | No | Folds (default: 0) |
+| `-chk` | No | Checkpoint name |
+| `-device` | No | `cuda`, `cpu`, or `mps` |
+| `--save_debug_patch` | No | Directory or `*.nii.gz` stem: writes `*_preprocessed.nii.gz` and `*_viewer.nii.gz` (optional `--save_debug_patch_prompts`). When `data_properties` includes `sitk_stuff`, these are written with **SimpleITK** using the same geometry pipeline as full-volume export (`convert_preprocessed_to_original_space` + crop), so viewer orientation matches the source scan; otherwise a diagonal-affine nibabel fallback is used. |
+
+**Point source (choose one):** `--points_json PATH` (or `-` to read one JSON object from stdin), `--points_inline '{...}'`, or `--point_zyx z,y,x`. For a long-lived subprocess with one preprocessed file and many clicks, `--stdin_loop` reads **one points JSON per line** from stdin after preprocessing (do not combine with `--points_json -`).
+
+**Embedding in a viewer (warm model + async preprocess):** see [single_patch_viewer_integration.md](single_patch_viewer_integration.md) for `WarmSinglePatchSession` (`nnunetv2.inference.single_patch_session`).
+
+Example:
+
+```bash
+echo '{"points": [[60, 125, 125]], "points_space": "voxel"}' > points_one.json
+
+nnUNetv2_predict_single_patch -i $nnUNet_raw/Dataset010/imagesTr -o ./predictions_single_patch \
+  -m $nnUNet_results/Dataset010/nnUNetTrainerPromptAware__nnUNetResEncUNetLPlans__3d_fullres \
+  -f 0 --points_json points_one.json
+```
+
 ### ROI inference modes (`inference` config)
 
 | Key | Default | Description |
@@ -207,13 +246,14 @@ For **`per_point_patch`**, see the table above (local prompts, queue + border ex
 
 ## Inference display and per-sample DICE
 
-Both **vanilla** (`nnUNetv2_predict`) and **ROI** (`nnUNetv2_predict_roi`) inference use Rich-formatted output (Panel, Progress bar, summary table) consistent with plan/preprocess/train.
+Both **vanilla** (`nnUNetv2_predict`), **ROI** (`nnUNetv2_predict_roi`), and **single-patch** (`nnUNetv2_predict_single_patch`) inference use Rich-formatted output (Panel, Progress bar, summary table) consistent with plan/preprocess/train.
 
 ### Per-sample DICE and running average
 
 When ground truth labels are available, pass `--labels_folder` to print per-case DICE and a running mean:
 
 - **ROI**: `nnUNetv2_predict_roi ... --labels_folder $nnUNet_raw/Dataset010/labelsTr`
+- **Single-patch**: `nnUNetv2_predict_single_patch ... --labels_folder $nnUNet_raw/Dataset010/labelsTr`
 - **Vanilla**: `nnUNetv2_predict -i ... -o ... -m ... --labels_folder $nnUNet_raw/Dataset010/labelsTr -npp 0 -nps 0`
 
 Vanilla requires `-npp 0 -nps 0` (sequential mode) for DICE; multiprocessing mode does not support it. Labels must match input case IDs (e.g. `case_001.nii.gz` in labels folder for `case_001_0000.nii.gz` in images).
@@ -229,6 +269,8 @@ The summary table at the end includes **Mean Dice** when `--labels_folder` was p
 
 If `points_space` is `world`, conversion to preprocessed voxel space uses the image's spacing and affine.
 
+If `points_space` is `voxel`, indices are usually on the **full loaded volume** (after `transpose_forward`, **before** crop/resampling). Optional JSON key **`voxel_coordinate_frame`**: `"full"` (default) applies crop bbox and resampling scale like world mm; `"preprocessed"` means indices are already on the final network tensor (internal/tests).
+
 ---
 
 ## Coordinate validation
@@ -239,8 +281,8 @@ A common source of errors is mixing up **physical vs voxel** coordinates and **a
 
 | Format | Space | Order | Use case |
 |--------|-------|-------|----------|
-| `zyx_voxel` (default) | voxel | z,y,x | nnUNet preprocessed |
-| `xyz_voxel` | voxel | x,y,z | ITK-SNAP, 3D Slicer voxel export |
+| `zyx_voxel` (default) | voxel | z,y,x | **Most common**: three indices are **axis-0, axis-1, axis-2** of the same `GetArrayFromImage` / nnU-Net volume `(nz, ny, nx)`. Use this when the viewer shows “IJK” as **array indices along each dimension** in storage order. |
+| `xyz_voxel` | voxel | x,y,z | ITK-style **(Ix, Iy, Iz)**: first value is index along **LPS x**, etc.; maps to nnU-Net `(z,y,x)` as `(Iz, Iy, Ix)`. **Not** the same as “first slider / first array axis” unless your UI labels axes that way. |
 | `xyz_world` (default for world) | world | x,y,z | ITK physical mm |
 | `zyx_world` | world | z,y,x | Pipelines exporting world in array order |
 
@@ -252,9 +294,14 @@ Specify `points_format` in your JSON when your tool exports a different order:
 
 ### Common mistakes
 
-- **Viewer exports (x,y,z) voxel** → use `points_format: "xyz_voxel"`.
+- **Wrong side / wrong kidney but planes look correct** → Often **`xyz_voxel` was used while the triple is already `(z,y,x)` array indices**. Try **`zyx_voxel`** with the same numbers, or run single-patch with **`--verbose`** and compare the printed preprocessed `(z,y,x)` to a landmark in the volume.
+- **True ITK LPS voxel indices (Ix, Iy, Iz)** → use `points_format: "xyz_voxel"`.
 - **Passing mm as voxel** → use `points_space: "world"` and `points_format: "xyz_world"` (or `zyx_world` if your source uses array order).
 - **Wrong format** → validation raises `ValueError` with a clear message.
+
+### Debug patch NIfTI padding
+
+`--save_debug_patch` expands the tight mask bbox by **`NNUNET_DEBUG_PATCH_BBOX_PAD`** voxels per side in original space (default **32**), or set **`debug_patch_bbox_pad`** in `points.json` (integer) to override. The crop is in **original scan spacing**, so its IJK size is **not** the network patch (e.g. 96×192×192) unless voxel spacing happens to match the preprocessed grid; it is the true physical extent of the tile. (Viewer stretching is applied **after** the bbox so background stays masked correctly.)
 
 ---
 
@@ -281,4 +328,4 @@ Specify `points_format` in your JSON when your tool exports a different order:
 - Training: `nnUNetv2_train` with default trainer — unchanged.
 - Inference: `nnUNetv2_predict` — unchanged.
 
-The prompt-aware path is separate and only used when you choose `nnUNetTrainerPromptAware` and `nnUNetv2_predict_roi`.
+The prompt-aware path is separate and only used when you choose `nnUNetTrainerPromptAware` and `nnUNetv2_predict_roi` or `nnUNetv2_predict_single_patch`.

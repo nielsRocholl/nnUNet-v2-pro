@@ -9,17 +9,18 @@ from batchgenerators.utilities.file_and_folder_operations import join
 
 from nnunetv2.training.dataloading.nnunet_dataset import infer_dataset_class
 from nnunetv2.training.dataloading.prompt_aware_data_loader import nnUNetPromptAwareDataLoader
-from nnunetv2.training.nnUNetTrainer.variants.network_architecture.nnUNetTrainerPromptChannel import (
-    nnUNetTrainerPromptChannel,
-)
 from nnunetv2.training.loss.dice import get_tp_fp_fn_tn
-from nnunetv2.utilities.collate_outputs import collate_outputs
 from nnunetv2.training.nnUNetTrainer.variants._validation_utils import (
     MODE_NAMES,
     build_wandb_extended_metrics,
     gather_validation_outputs_ddp,
     log_dice_by_mode,
 )
+from nnunetv2.training.nnUNetTrainer.variants.network_architecture.nnUNetTrainerPromptChannel import (
+    nnUNetTrainerPromptChannel,
+)
+from nnunetv2.utilities.collate_outputs import collate_outputs
+
 # def _collate_prompt_aware_outputs(outputs: List[dict]) -> dict:
 #     """Collate validation outputs; handles varying batch sizes and class counts (merged datasets)."""
 #     collated = {}
@@ -208,6 +209,7 @@ class nnUNetTrainerPromptAware(nnUNetTrainerPromptChannel):
             result["keys"] = batch.get("keys", [])
             return result
         from torch import autocast
+
         from nnunetv2.utilities.helpers import dummy_context
 
         data = batch["data"]

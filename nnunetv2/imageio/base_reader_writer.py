@@ -14,7 +14,8 @@
 #    limitations under the License.
 
 from abc import ABC, abstractmethod
-from typing import Tuple, Union, List
+from typing import List, Tuple, Union
+
 import numpy as np
 
 

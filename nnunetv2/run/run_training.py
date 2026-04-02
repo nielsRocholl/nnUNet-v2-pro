@@ -2,19 +2,20 @@ import multiprocessing
 import os
 import socket
 import warnings
-from typing import Union, Optional, List
+from typing import List, Optional, Union
 
-import nnunetv2
 import torch.cuda
 import torch.distributed as dist
 import torch.multiprocessing as mp
-from batchgenerators.utilities.file_and_folder_operations import join, isfile, load_json
+from batchgenerators.utilities.file_and_folder_operations import isfile, join, load_json
+from torch.backends import cudnn
+
+import nnunetv2
 from nnunetv2.paths import nnUNet_preprocessed
 from nnunetv2.run.load_pretrained_weights import load_pretrained_weights
 from nnunetv2.training.nnUNetTrainer.nnUNetTrainer import nnUNetTrainer
 from nnunetv2.utilities.dataset_name_id_conversion import maybe_convert_to_dataset_name
 from nnunetv2.utilities.find_class_by_name import recursive_find_python_class
-from torch.backends import cudnn
 
 # Suppress deprecation warning from fft_conv_pytorch (third-party dependency)
 warnings.filterwarnings('ignore', message='.*non-tuple sequence for multidimensional indexing.*', category=UserWarning)
@@ -99,13 +100,13 @@ def maybe_load_checkpoint(nnunet_trainer: nnUNetTrainer, continue_training: bool
         if not isfile(expected_checkpoint_file):
             expected_checkpoint_file = join(nnunet_trainer.output_folder, 'checkpoint_best.pth')
         if not isfile(expected_checkpoint_file):
-            print(f"WARNING: Cannot continue training because there seems to be no checkpoint available to "
-                               f"continue from. Starting a new training...")
+            print("WARNING: Cannot continue training because there seems to be no checkpoint available to "
+                               "continue from. Starting a new training...")
             expected_checkpoint_file = None
     elif validation_only:
         expected_checkpoint_file = join(nnunet_trainer.output_folder, 'checkpoint_final.pth')
         if not isfile(expected_checkpoint_file):
-            raise RuntimeError(f"Cannot run validation because the training is not finished yet!")
+            raise RuntimeError("Cannot run validation because the training is not finished yet!")
     else:
         if pretrained_weights_file is not None:
             if not nnunet_trainer.was_initialized:
@@ -136,7 +137,7 @@ def run_ddp(rank, dataset_name_or_id, configuration, fold, tr, p, disable_checkp
     if disable_checkpointing:
         nnunet_trainer.disable_checkpointing = disable_checkpointing
 
-    assert not (c and val), f'Cannot set --c and --val flag at the same time. Dummy.'
+    assert not (c and val), 'Cannot set --c and --val flag at the same time. Dummy.'
 
     maybe_load_checkpoint(nnunet_trainer, c, val, pretrained_weights)
 
@@ -242,7 +243,7 @@ def run_training(dataset_name_or_id: Union[str, int],
             nnunet_trainer.stretched_tail_ref_poly_steps = stretched_tail_ref_poly_steps
             nnunet_trainer.stretched_tail_exponent = stretched_tail_exponent
 
-        assert not (continue_training and only_run_validation), f'Cannot set --c and --val flag at the same time. Dummy.'
+        assert not (continue_training and only_run_validation), 'Cannot set --c and --val flag at the same time. Dummy.'
 
         # Create display BEFORE loading checkpoint so citation can be shown properly
         if display is None:

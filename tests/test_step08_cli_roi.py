@@ -131,6 +131,7 @@ def test_training_accepts_config_for_prompt_aware():
 def _make_temp_model_folder(tmpdir):
     """Create minimal model folder for ROI predict (untrained weights)."""
     import torch
+
     from nnunetv2.training.nnUNetTrainer.variants.nnUNetTrainerPromptAware import nnUNetTrainerPromptAware
     from nnunetv2.utilities.label_handling.label_handling import determine_num_input_channels
 
@@ -190,7 +191,10 @@ def test_roi_cli_end_to_end():
         model_dir = _make_temp_model_folder(tmpdir)
         points_path = join(tmpdir, "points.json")
         with open(points_path, "w") as f:
-            json.dump({"points": [list(center)], "points_space": "voxel"}, f)
+            json.dump(
+                {"points": [list(center)], "points_space": "voxel", "voxel_coordinate_frame": "preprocessed"},
+                f,
+            )
         out_dir = join(tmpdir, "out")
         maybe_mkdir_p(out_dir)
 
@@ -249,7 +253,10 @@ def test_step08_visual_output():
         model_dir = _make_temp_model_folder(tmpdir)
         points_path = join(tmpdir, "points.json")
         with open(points_path, "w") as f:
-            json.dump({"points": [list(center)], "points_space": "voxel"}, f)
+            json.dump(
+                {"points": [list(center)], "points_space": "voxel", "voxel_coordinate_frame": "preprocessed"},
+                f,
+            )
         roi_out = join(tmpdir, "roi_out")
         maybe_mkdir_p(roi_out)
 
@@ -278,7 +285,15 @@ def test_step08_visual_output():
             import shutil
             shutil.copy(pred_path, join(out_dir, "prediction.nii.gz"))
         with open(join(out_dir, "points_used.json"), "w") as f:
-            json.dump({"points": [list(center)], "points_space": "voxel"}, f, indent=2)
+            json.dump(
+                {
+                    "points": [list(center)],
+                    "points_space": "voxel",
+                    "voxel_coordinate_frame": "preprocessed",
+                },
+                f,
+                indent=2,
+            )
 
     with open(join(out_dir, "README.txt"), "w") as f:
         f.write("Step 8 visual outputs — ROI-mode CLI\n\n")

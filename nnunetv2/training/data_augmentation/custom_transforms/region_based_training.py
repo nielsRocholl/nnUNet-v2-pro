@@ -1,7 +1,7 @@
 from typing import List, Tuple, Union
 
-from batchgenerators.transforms.abstract_transforms import AbstractTransform
 import numpy as np
+from batchgenerators.transforms.abstract_transforms import AbstractTransform
 
 
 class ConvertSegmentationToRegionsTransform(AbstractTransform):

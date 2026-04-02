@@ -13,11 +13,11 @@ if "nnUNet_raw" not in os.environ:
     os.environ["nnUNet_results"] = os.path.join(_base, "nnUNet_results")
 
 from batchgenerators.utilities.file_and_folder_operations import join
+from rich.console import Console
 
 from nnunetv2.evaluation.evaluate_predictions import compute_dice_from_arrays
 from nnunetv2.utilities.cli_display import InferenceDisplay
 from nnunetv2.utilities.file_path_utilities import get_output_folder
-from rich.console import Console
 
 
 def test_compute_dice_from_arrays_perfect():
@@ -174,15 +174,19 @@ def test_roi_with_display():
     if not os.path.isdir(raw_images):
         pytest.skip("Dataset010 imagesTr not found")
 
-    import tempfile
-    import sys
     import json
+    import sys
+    import tempfile
     cfg = join(Path(__file__).resolve().parent, "fixtures", "nnunet_pro_config.json")
     if not os.path.isfile(cfg):
         pytest.skip("fixture config not found")
     with tempfile.TemporaryDirectory() as tmp:
         points_path = join(tmp, "points.json")
-        points_json = {"points": [[32, 64, 64]], "points_space": "voxel"}
+        points_json = {
+            "points": [[32, 64, 64]],
+            "points_space": "voxel",
+            "voxel_coordinate_frame": "preprocessed",
+        }
         with open(points_path, "w") as f:
             json.dump(points_json, f)
         out_dir = join(tmp, "out")

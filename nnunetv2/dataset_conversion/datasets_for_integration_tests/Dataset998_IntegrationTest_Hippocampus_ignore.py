@@ -2,9 +2,8 @@ import shutil
 
 from batchgenerators.utilities.file_and_folder_operations import isdir, join, load_json, save_json
 
-from nnunetv2.utilities.dataset_name_id_conversion import maybe_convert_to_dataset_name
 from nnunetv2.paths import nnUNet_raw
-
+from nnunetv2.utilities.dataset_name_id_conversion import maybe_convert_to_dataset_name
 
 if __name__ == '__main__':
     dataset_name = 'IntegrationTest_Hippocampus_ignore'

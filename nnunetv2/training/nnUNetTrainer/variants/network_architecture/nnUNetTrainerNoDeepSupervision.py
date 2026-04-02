@@ -1,5 +1,6 @@
-from nnunetv2.training.nnUNetTrainer.nnUNetTrainer import nnUNetTrainer
 import torch
+
+from nnunetv2.training.nnUNetTrainer.nnUNetTrainer import nnUNetTrainer
 
 
 class nnUNetTrainerNoDeepSupervision(nnUNetTrainer):

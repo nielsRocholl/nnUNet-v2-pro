@@ -1,6 +1,7 @@
+import numpy as np
+
 from nnunetv2.training.data_augmentation.compute_initial_patch_size import get_patch_size
 from nnunetv2.training.nnUNetTrainer.nnUNetTrainer import nnUNetTrainer
-import numpy as np
 
 
 class nnUNetTrainer_noDummy2DDA(nnUNetTrainer):

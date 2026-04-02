@@ -3,10 +3,11 @@ import shutil
 from pathlib import Path
 from typing import List
 
-from batchgenerators.utilities.file_and_folder_operations import nifti_files, join, maybe_mkdir_p, save_json
-from nnunetv2.dataset_conversion.generate_dataset_json import generate_dataset_json
-from nnunetv2.paths import nnUNet_raw, nnUNet_preprocessed
 import numpy as np
+from batchgenerators.utilities.file_and_folder_operations import join, maybe_mkdir_p, nifti_files, save_json
+
+from nnunetv2.dataset_conversion.generate_dataset_json import generate_dataset_json
+from nnunetv2.paths import nnUNet_preprocessed, nnUNet_raw
 
 
 def make_out_dirs(dataset_id: int, task_name="ACDC"):

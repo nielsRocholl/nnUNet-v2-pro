@@ -1,16 +1,13 @@
 import warnings
+from copy import deepcopy
+from typing import List, Tuple, Union
 
 import numpy as np
-from copy import deepcopy
-from typing import Union, List, Tuple
-
 from dynamic_network_architectures.architectures.unet import ResidualEncoderUNet
 from dynamic_network_architectures.building_blocks.helper import convert_dim_to_conv_op, get_matching_instancenorm
-from nnunetv2.preprocessing.resampling.resample_torch import resample_torch_fornnunet
 from torch import nn
 
 from nnunetv2.experiment_planning.experiment_planners.default_experiment_planner import ExperimentPlanner
-
 from nnunetv2.experiment_planning.experiment_planners.network_topology import get_pool_and_conv_props
 
 

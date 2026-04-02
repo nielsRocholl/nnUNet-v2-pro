@@ -1,7 +1,6 @@
 """Validate and convert ROI prompt coordinates to canonical form (z,y,x) voxel or (x,y,z) world."""
 from typing import List, Optional, Tuple, Union
 
-
 VALID_FORMATS = frozenset({"zyx_voxel", "xyz_voxel", "xyz_world", "zyx_world"})
 
 

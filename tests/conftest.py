@@ -1,7 +1,6 @@
 """Pytest configuration. Sets nnUNet env vars for tests that need dummy data."""
 import os
 
-
 # Path to dummy datasets (set before importing nnunetv2.paths)
 NNUNET_DUMMY_BASE = "/Users/nielsrocholl/Documents/PhD DIAG - Local/Data/dummy datasets"
 

@@ -125,9 +125,11 @@ def test_parse_points_json_voxel():
         json.dump({"points": [[10, 20, 30], [5, 15, 25]], "points_space": "voxel"}, f)
         path = f.name
     try:
-        pts, space, fmt = parse_points_json(path)
+        pts, space, fmt, vf, pad = parse_points_json(path)
         assert space == "voxel"
         assert fmt == "zyx_voxel"
+        assert vf == "full"
+        assert pad is None
         assert pts == [[10, 20, 30], [5, 15, 25]]
     finally:
         os.unlink(path)
@@ -138,11 +140,32 @@ def test_parse_points_json_world():
         json.dump({"points": [[100.0, 200.0, 300.0]], "points_space": "world"}, f)
         path = f.name
     try:
-        pts, space, fmt = parse_points_json(path)
+        pts, space, fmt, vf, pad = parse_points_json(path)
         assert space == "world"
         assert fmt == "xyz_world"
+        assert vf == "full"
+        assert pad is None
         assert len(pts) == 1
         assert pts[0] == [100.0, 200.0, 300.0]
+    finally:
+        os.unlink(path)
+
+
+def test_parse_points_json_debug_patch_bbox_pad():
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+        json.dump(
+            {
+                "points": [[1, 2, 3]],
+                "points_space": "voxel",
+                "debug_patch_bbox_pad": 48,
+            },
+            f,
+        )
+        path = f.name
+    try:
+        pts, space, fmt, vf, pad = parse_points_json(path)
+        assert pad == 48
+        assert pts == [[1, 2, 3]]
     finally:
         os.unlink(path)
 

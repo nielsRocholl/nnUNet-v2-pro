@@ -6,11 +6,14 @@ from time import time as time_func
 
 import numpy as np
 import torch
-from batchgenerators.utilities.file_and_folder_operations import join, isfile, load_json, maybe_mkdir_p, save_json
+from batchgenerators.utilities.file_and_folder_operations import isfile, join, maybe_mkdir_p, save_json
 
 from nnunetv2.evaluation.evaluate_predictions import compute_dice_from_arrays
 from nnunetv2.inference.data_iterators import preprocessing_iterator_fromfiles
-from nnunetv2.inference.export_prediction import convert_predicted_logits_to_segmentation_with_correct_shape, export_prediction_from_logits
+from nnunetv2.inference.export_prediction import (
+    convert_predicted_logits_to_segmentation_with_correct_shape,
+    export_prediction_from_logits,
+)
 from nnunetv2.inference.roi_predictor import nnUNetROIPredictor, parse_points_json
 from nnunetv2.utilities.cli_display import InferenceDisplay
 from nnunetv2.utilities.roi_config import load_config
@@ -115,7 +118,9 @@ def predict_roi_entry_point():
     ]
     output_truncated = [join(args.o, cid) for cid in caseids]
 
-    points_raw, space, fmt = parse_points_json(args.points_json, args.points_space)
+    points_raw, space, fmt, voxel_frame, _debug_patch_bbox_pad = parse_points_json(
+        args.points_json, args.points_space
+    )
     points_canonical = validate_and_convert_points(points_raw, space, fmt)
 
     num_pp = min(args.npp, len(list_of_lists))
@@ -157,17 +162,15 @@ def predict_roi_entry_point():
             ofile = preprocessed["ofile"]
             shape = tuple(data.shape[1:])
 
-            if space == "world":
-                points_zyx = points_to_centers_zyx(
-                    points_canonical,
-                    "world",
-                    props,
-                    shape,
-                    tuple(pred.configuration_manager.spacing),
-                    pred.plans_manager.transpose_forward,
-                )
-            else:
-                points_zyx = points_canonical
+            points_zyx = points_to_centers_zyx(
+                points_canonical,
+                space,
+                props,
+                shape,
+                tuple(pred.configuration_manager.spacing),
+                pred.plans_manager.transpose_forward,
+                voxel_coordinate_frame=voxel_frame,
+            )
 
             logits = pred.predict_logits_roi_mode(data, points_zyx, props, cfg)
 

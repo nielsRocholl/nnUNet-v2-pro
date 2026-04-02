@@ -13,10 +13,12 @@
 #    See the License for the specific language governing permissions and
 #    limitations under the License.
 
-from typing import Tuple, Union, List
+from typing import List, Tuple, Union
+
 import numpy as np
-from nnunetv2.imageio.base_reader_writer import BaseReaderWriter
 import SimpleITK as sitk
+
+from nnunetv2.imageio.base_reader_writer import BaseReaderWriter
 
 
 class SimpleITKIO(BaseReaderWriter):

@@ -4,7 +4,6 @@ from pathlib import Path
 
 import numpy as np
 import pytest
-
 from batchgenerators.utilities.file_and_folder_operations import join, load_json
 
 from nnunetv2.training.dataloading.nnunet_dataset import infer_dataset_class
@@ -65,8 +64,8 @@ def test_config_loads_propagated():
 
 
 def test_config_defaults_when_propagated_absent():
-    import tempfile
     import json
+    import tempfile
     with tempfile.NamedTemporaryFile(suffix=".json", delete=False, mode="w") as f:
         d = {
             "prompt": {"point_radius_vox": 5, "encoding": "edt", "validation_use_prompt": True},

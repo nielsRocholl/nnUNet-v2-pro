@@ -1,25 +1,25 @@
 import shutil
 from copy import deepcopy
-from typing import List, Union, Tuple
+from typing import List, Tuple, Union
 
 import numpy as np
 import torch
-from batchgenerators.utilities.file_and_folder_operations import load_json, join, save_json, isfile, maybe_mkdir_p
+from batchgenerators.utilities.file_and_folder_operations import isfile, join, load_json, maybe_mkdir_p, save_json
 from dynamic_network_architectures.architectures.unet import PlainConvUNet
 from dynamic_network_architectures.building_blocks.helper import convert_dim_to_conv_op, get_matching_instancenorm
 
 from nnunetv2.configuration import ANISO_THRESHOLD
 from nnunetv2.experiment_planning.experiment_planners.network_topology import get_pool_and_conv_props
 from nnunetv2.imageio.reader_writer_registry import determine_reader_writer_from_dataset_json
-from nnunetv2.paths import nnUNet_raw, nnUNet_preprocessed
+from nnunetv2.paths import nnUNet_preprocessed, nnUNet_raw
 from nnunetv2.preprocessing.normalization.map_channel_name_to_normalization import get_normalization_scheme
-from nnunetv2.preprocessing.resampling.default_resampling import resample_data_or_seg_to_shape, compute_new_shape
+from nnunetv2.preprocessing.resampling.default_resampling import compute_new_shape, resample_data_or_seg_to_shape
+from nnunetv2.utilities.cli_display import PlanningDisplay
 from nnunetv2.utilities.dataset_name_id_conversion import maybe_convert_to_dataset_name
 from nnunetv2.utilities.default_n_proc_DA import get_allowed_n_proc_DA
 from nnunetv2.utilities.get_network_from_plans import get_network_from_plans
 from nnunetv2.utilities.json_export import recursive_fix_for_json_export
 from nnunetv2.utilities.utils import get_filenames_of_train_images_and_targets
-from nnunetv2.utilities.cli_display import PlanningDisplay
 
 
 class ExperimentPlanner(object):

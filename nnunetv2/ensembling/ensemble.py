@@ -2,11 +2,20 @@ import argparse
 import multiprocessing
 import shutil
 from copy import deepcopy
-from typing import List, Union, Tuple
+from typing import List, Tuple, Union
 
 import numpy as np
-from batchgenerators.utilities.file_and_folder_operations import load_json, join, subfiles, \
-    maybe_mkdir_p, isdir, save_pickle, load_pickle, isfile
+from batchgenerators.utilities.file_and_folder_operations import (
+    isdir,
+    isfile,
+    join,
+    load_json,
+    load_pickle,
+    maybe_mkdir_p,
+    save_pickle,
+    subfiles,
+)
+
 from nnunetv2.configuration import default_num_processes
 from nnunetv2.imageio.base_reader_writer import BaseReaderWriter
 from nnunetv2.utilities.label_handling.label_handling import LabelManager

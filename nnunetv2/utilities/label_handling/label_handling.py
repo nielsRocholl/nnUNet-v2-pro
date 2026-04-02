@@ -1,21 +1,20 @@
 from __future__ import annotations
+
 from time import time
-from typing import Union, List, Tuple, Type
+from typing import TYPE_CHECKING, List, Tuple, Type, Union
 
 import numpy as np
 import torch
-from acvl_utils.cropping_and_padding.bounding_boxes import bounding_box_to_slice, insert_crop_into_image
+from acvl_utils.cropping_and_padding.bounding_boxes import insert_crop_into_image
 from batchgenerators.utilities.file_and_folder_operations import join
 
 import nnunetv2
 from nnunetv2.utilities.find_class_by_name import recursive_find_python_class
 from nnunetv2.utilities.helpers import softmax_helper_dim0
 
-from typing import TYPE_CHECKING
-
 # see https://adamj.eu/tech/2021/05/13/python-type-hints-how-to-fix-circular-imports/
 if TYPE_CHECKING:
-    from nnunetv2.utilities.plans_handling.plans_handler import PlansManager, ConfigurationManager
+    from nnunetv2.utilities.plans_handling.plans_handler import ConfigurationManager, PlansManager
 
 
 class LabelManager(object):

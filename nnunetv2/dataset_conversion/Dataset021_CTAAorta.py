@@ -1,9 +1,9 @@
+
+import SimpleITK as sitk
 from batchgenerators.utilities.file_and_folder_operations import *
-import shutil
+
 from nnunetv2.dataset_conversion.generate_dataset_json import generate_dataset_json
 from nnunetv2.paths import nnUNet_raw
-import SimpleITK as sitk
-
 
 if __name__ == '__main__':
     """

@@ -2,8 +2,9 @@ import pydoc
 import warnings
 from typing import Union
 
-from nnunetv2.utilities.find_class_by_name import recursive_find_python_class
 from batchgenerators.utilities.file_and_folder_operations import join
+
+from nnunetv2.utilities.find_class_by_name import recursive_find_python_class
 
 
 def get_network_from_plans(arch_class_name, arch_kwargs, arch_kwargs_req_import, input_channels, output_channels,

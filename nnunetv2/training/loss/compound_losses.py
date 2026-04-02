@@ -1,8 +1,9 @@
 import torch
-from nnunetv2.training.loss.dice import SoftDiceLoss, MemoryEfficientSoftDiceLoss
+from torch import nn
+
+from nnunetv2.training.loss.dice import MemoryEfficientSoftDiceLoss, SoftDiceLoss
 from nnunetv2.training.loss.robust_ce_loss import RobustCrossEntropyLoss, TopKLoss
 from nnunetv2.utilities.helpers import softmax_helper_dim1
-from torch import nn
 
 
 class DC_and_CE_loss(nn.Module):

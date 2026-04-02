@@ -1,4 +1,4 @@
-from typing import Tuple, Union, List
+from typing import List, Tuple, Union
 
 from batchgenerators.transforms.abstract_transforms import AbstractTransform
 

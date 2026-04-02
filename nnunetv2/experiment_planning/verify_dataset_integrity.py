@@ -16,7 +16,7 @@ import multiprocessing
 import shutil
 from os.path import basename
 from pathlib import Path
-from typing import Type, Optional
+from typing import Optional, Type
 
 import numpy as np
 import pandas as pd

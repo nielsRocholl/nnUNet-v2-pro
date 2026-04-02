@@ -1,4 +1,4 @@
-from typing import Union, List
+from typing import List, Union
 
 import numpy as np
 import torch
@@ -8,7 +8,7 @@ from batchgenerators.utilities.file_and_folder_operations import load_json, save
 from nnunetv2.configuration import default_num_processes
 from nnunetv2.training.dataloading.nnunet_dataset import nnUNetDatasetBlosc2
 from nnunetv2.utilities.label_handling.label_handling import LabelManager
-from nnunetv2.utilities.plans_handling.plans_handler import PlansManager, ConfigurationManager
+from nnunetv2.utilities.plans_handling.plans_handler import ConfigurationManager, PlansManager
 
 
 def convert_predicted_logits_to_segmentation_with_correct_shape(predicted_logits: Union[torch.Tensor, np.ndarray],

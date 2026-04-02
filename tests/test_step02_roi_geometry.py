@@ -90,6 +90,42 @@ def test_points_to_centers_world():
     assert centers == [(31, 32, 16)]
 
 
+def test_points_to_centers_voxel_full_volume_matches_world():
+    """Discrete z,y,x on full loaded volume maps to same preprocessed center as world mm."""
+    props = {
+        "sitk_stuff": {"origin": (0.0, 0.0, 0.0), "spacing": (1.0, 1.0, 1.0)},
+        "bbox_used_for_cropping": [(0, 32), (0, 64), (0, 64)],
+        "shape_after_cropping_and_before_resampling": (32, 64, 64),
+    }
+    shape = (32, 64, 64)
+    spacing = (1.0, 1.0, 1.0)
+    tf = (0, 1, 2)
+    w = points_to_centers_zyx([[16.0, 32.0, 31.0]], "world", props, shape, spacing, tf)
+    v = points_to_centers_zyx(
+        [[31, 32, 16]], "voxel", props, shape, spacing, tf, voxel_coordinate_frame="full"
+    )
+    assert v == w
+
+
+def test_points_to_centers_voxel_preprocessed_frame_ignores_bbox():
+    props = {
+        "sitk_stuff": {"origin": (0.0, 0.0, 0.0), "spacing": (1.0, 1.0, 1.0)},
+        "bbox_used_for_cropping": [(10, 42), (0, 64), (0, 64)],
+        "shape_after_cropping_and_before_resampling": (32, 64, 64),
+    }
+    shape = (32, 64, 64)
+    v = points_to_centers_zyx(
+        [[5, 32, 16]],
+        "voxel",
+        props,
+        shape,
+        (1.0, 1.0, 1.0),
+        (0, 1, 2),
+        voxel_coordinate_frame="preprocessed",
+    )
+    assert v == [(5, 32, 16)]
+
+
 def test_step02_visual_output():
     """Save NIfTIs for CT viewer. Use patch-sized crop around centroid."""
     preprocessed_dir = join(

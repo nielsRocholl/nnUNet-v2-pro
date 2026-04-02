@@ -1,10 +1,10 @@
-from typing import Union, List, Tuple, Callable
+from typing import Callable, List, Tuple, Union
 
 import numpy as np
 from acvl_utils.morphology.morphology_helper import label_with_component_sizes
 from batchgenerators.transforms.abstract_transforms import AbstractTransform
 from skimage.morphology import ball
-from skimage.morphology.binary import binary_erosion, binary_dilation, binary_closing, binary_opening
+from skimage.morphology.binary import binary_closing, binary_dilation, binary_erosion, binary_opening
 
 
 class MoveSegAsOneHotToData(AbstractTransform):

@@ -2,8 +2,8 @@ import matplotlib
 from batchgenerators.utilities.file_and_folder_operations import join
 
 matplotlib.use('agg')
-import seaborn as sns
 import matplotlib.pyplot as plt
+import seaborn as sns
 
 
 class nnUNetLogger(object):

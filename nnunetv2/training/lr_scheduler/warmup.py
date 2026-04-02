@@ -1,10 +1,10 @@
 import math
 import warnings
-from typing import Optional, cast, List
+from typing import List, Optional, cast
 
 from torch import Tensor
 from torch.optim import Optimizer
-from torch.optim.lr_scheduler import _LRScheduler, CosineAnnealingLR, _enable_get_lr_call
+from torch.optim.lr_scheduler import CosineAnnealingLR, _enable_get_lr_call, _LRScheduler
 
 
 class Lin_incr_LRScheduler(_LRScheduler):

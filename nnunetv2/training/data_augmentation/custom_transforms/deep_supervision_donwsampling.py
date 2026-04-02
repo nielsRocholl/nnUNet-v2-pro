@@ -1,8 +1,8 @@
-from typing import Tuple, Union, List
+from typing import List, Tuple, Union
 
+import numpy as np
 from batchgenerators.augmentations.utils import resize_segmentation
 from batchgenerators.transforms.abstract_transforms import AbstractTransform
-import numpy as np
 
 
 class DownsampleSegForDSTransform2(AbstractTransform):

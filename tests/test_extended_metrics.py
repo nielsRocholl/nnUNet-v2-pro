@@ -1,12 +1,11 @@
 """Tests for extended wandb metrics: per-patch, per-dataset, per-size-bin Dice."""
 import os
-from pathlib import Path
 
 import numpy as np
 import pytest
 import torch
-
 from batchgenerators.utilities.file_and_folder_operations import join, save_json
+
 from nnunetv2.utilities.extended_metrics import compute_extended_dice_metrics
 
 try:

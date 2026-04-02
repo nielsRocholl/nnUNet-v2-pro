@@ -1,11 +1,11 @@
 import shutil
-from typing import Union, List, Tuple
+from typing import List, Tuple, Union
 
-from batchgenerators.utilities.file_and_folder_operations import load_json, join, isdir, maybe_mkdir_p, subfiles, isfile
+from batchgenerators.utilities.file_and_folder_operations import isdir, isfile, join, load_json, maybe_mkdir_p, subfiles
 
 from nnunetv2.configuration import default_num_processes
 from nnunetv2.evaluation.evaluate_predictions import compute_metrics_on_folder
-from nnunetv2.paths import nnUNet_raw, nnUNet_preprocessed
+from nnunetv2.paths import nnUNet_preprocessed, nnUNet_raw
 from nnunetv2.utilities.plans_handling.plans_handler import PlansManager
 
 

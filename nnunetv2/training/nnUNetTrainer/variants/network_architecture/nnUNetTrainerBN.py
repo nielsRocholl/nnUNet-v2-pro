@@ -1,4 +1,5 @@
-from typing import Union, Tuple, List
+from typing import List, Tuple, Union
+
 from dynamic_network_architectures.building_blocks.helper import get_matching_batchnorm
 from torch import nn
 

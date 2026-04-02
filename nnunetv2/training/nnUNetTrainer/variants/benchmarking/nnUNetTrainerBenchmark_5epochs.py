@@ -1,10 +1,10 @@
 import subprocess
 
 import torch
-from batchgenerators.utilities.file_and_folder_operations import save_json, join, isfile, load_json
+from batchgenerators.utilities.file_and_folder_operations import isfile, join, load_json, save_json
+from torch import distributed as dist
 
 from nnunetv2.training.nnUNetTrainer.nnUNetTrainer import nnUNetTrainer
-from torch import distributed as dist
 
 
 class nnUNetTrainerBenchmark_5epochs(nnUNetTrainer):

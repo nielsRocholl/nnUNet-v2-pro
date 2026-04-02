@@ -11,9 +11,7 @@ import pytest
 
 from nnunetv2.utilities.dataset_statistics import (
     collect_case_statistics,
-    compute_size_bin_thresholds,
     get_size_bin,
-    save_case_stats,
 )
 from tests.conftest import KITS23_NNUNET_RAW
 

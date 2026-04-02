@@ -1,34 +1,57 @@
-from typing import List, Union, Tuple
+from typing import List, Tuple, Union
 
 import numpy as np
 import torch
 from batchgenerators.dataloading.nondet_multi_threaded_augmenter import NonDetMultiThreadedAugmenter
 from batchgenerators.dataloading.single_threaded_augmenter import SingleThreadedAugmenter
 from batchgenerators.transforms.abstract_transforms import AbstractTransform, Compose
-from batchgenerators.transforms.color_transforms import BrightnessTransform, ContrastAugmentationTransform, \
-    GammaTransform
+from batchgenerators.transforms.color_transforms import (
+    BrightnessTransform,
+    ContrastAugmentationTransform,
+    GammaTransform,
+)
 from batchgenerators.transforms.local_transforms import BrightnessGradientAdditiveTransform, LocalGammaTransform
-from batchgenerators.transforms.noise_transforms import MedianFilterTransform, GaussianBlurTransform, \
-    GaussianNoiseTransform, BlankRectangleTransform, SharpeningTransform
+from batchgenerators.transforms.noise_transforms import (
+    BlankRectangleTransform,
+    GaussianBlurTransform,
+    GaussianNoiseTransform,
+    MedianFilterTransform,
+    SharpeningTransform,
+)
 from batchgenerators.transforms.resample_transforms import SimulateLowResolutionTransform
-from batchgenerators.transforms.spatial_transforms import SpatialTransform, Rot90Transform, TransposeAxesTransform, \
-    MirrorTransform
-from batchgenerators.transforms.utility_transforms import OneOfTransform, RemoveLabelTransform, RenameTransform, \
-    NumpyToTensor
+from batchgenerators.transforms.spatial_transforms import (
+    MirrorTransform,
+    Rot90Transform,
+    SpatialTransform,
+    TransposeAxesTransform,
+)
+from batchgenerators.transforms.utility_transforms import (
+    NumpyToTensor,
+    OneOfTransform,
+    RemoveLabelTransform,
+    RenameTransform,
+)
 from batchgeneratorsv2.helpers.scalar_type import RandomScalar
 from torch import autocast
 
 from nnunetv2.configuration import ANISO_THRESHOLD
 from nnunetv2.training.data_augmentation.compute_initial_patch_size import get_patch_size
-from nnunetv2.training.data_augmentation.custom_transforms.cascade_transforms import MoveSegAsOneHotToData, \
-    ApplyRandomBinaryOperatorTransform, RemoveRandomConnectedComponentFromOneHotEncodingTransform
-from nnunetv2.training.data_augmentation.custom_transforms.deep_supervision_donwsampling import \
-    DownsampleSegForDSTransform2
+from nnunetv2.training.data_augmentation.custom_transforms.cascade_transforms import (
+    ApplyRandomBinaryOperatorTransform,
+    MoveSegAsOneHotToData,
+    RemoveRandomConnectedComponentFromOneHotEncodingTransform,
+)
+from nnunetv2.training.data_augmentation.custom_transforms.deep_supervision_donwsampling import (
+    DownsampleSegForDSTransform2,
+)
 from nnunetv2.training.data_augmentation.custom_transforms.masking import MaskTransform
-from nnunetv2.training.data_augmentation.custom_transforms.region_based_training import \
-    ConvertSegmentationToRegionsTransform
-from nnunetv2.training.data_augmentation.custom_transforms.transforms_for_dummy_2d import Convert3DTo2DTransform, \
-    Convert2DTo3DTransform
+from nnunetv2.training.data_augmentation.custom_transforms.region_based_training import (
+    ConvertSegmentationToRegionsTransform,
+)
+from nnunetv2.training.data_augmentation.custom_transforms.transforms_for_dummy_2d import (
+    Convert2DTo3DTransform,
+    Convert3DTo2DTransform,
+)
 from nnunetv2.training.dataloading.data_loader import nnUNetDataLoader
 from nnunetv2.training.loss.dice import get_tp_fp_fn_tn
 from nnunetv2.training.nnUNetTrainer.nnUNetTrainer import nnUNetTrainer

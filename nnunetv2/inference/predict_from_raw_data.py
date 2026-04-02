@@ -5,15 +5,23 @@ import os
 from copy import deepcopy
 from queue import Queue
 from threading import Thread
-from time import sleep, time as time_func
-from typing import Tuple, Union, List, Optional
+from time import sleep
+from time import time as time_func
+from typing import List, Optional, Tuple, Union
 
 import numpy as np
 import torch
 from acvl_utils.cropping_and_padding.padding import pad_nd_image
 from batchgenerators.dataloading.multi_threaded_augmenter import MultiThreadedAugmenter
-from batchgenerators.utilities.file_and_folder_operations import load_json, join, isfile, maybe_mkdir_p, isdir, subdirs, \
-    save_json
+from batchgenerators.utilities.file_and_folder_operations import (
+    isdir,
+    isfile,
+    join,
+    load_json,
+    maybe_mkdir_p,
+    save_json,
+    subdirs,
+)
 from torch import nn
 from torch._dynamo import OptimizedModule
 from torch.nn.parallel import DistributedDataParallel
@@ -21,21 +29,25 @@ from tqdm import tqdm
 
 import nnunetv2
 from nnunetv2.configuration import default_num_processes
-from nnunetv2.inference.data_iterators import PreprocessAdapterFromNpy, preprocessing_iterator_fromfiles, \
-    preprocessing_iterator_fromnpy
-from nnunetv2.inference.export_prediction import export_prediction_from_logits, \
-    convert_predicted_logits_to_segmentation_with_correct_shape
-from nnunetv2.inference.sliding_window_prediction import compute_gaussian, \
-    compute_steps_for_sliding_window
-from nnunetv2.utilities.file_path_utilities import get_output_folder, check_workers_alive_and_busy
-from nnunetv2.utilities.find_class_by_name import recursive_find_python_class
-from nnunetv2.utilities.helpers import empty_cache, dummy_context
-from nnunetv2.utilities.json_export import recursive_fix_for_json_export
 from nnunetv2.evaluation.evaluate_predictions import compute_dice_from_arrays
-from nnunetv2.utilities.label_handling.label_handling import determine_num_input_channels
-from nnunetv2.utilities.plans_handling.plans_handler import PlansManager, ConfigurationManager
-from nnunetv2.utilities.utils import create_lists_from_splitted_dataset_folder
+from nnunetv2.inference.data_iterators import (
+    PreprocessAdapterFromNpy,
+    preprocessing_iterator_fromfiles,
+    preprocessing_iterator_fromnpy,
+)
+from nnunetv2.inference.export_prediction import (
+    convert_predicted_logits_to_segmentation_with_correct_shape,
+    export_prediction_from_logits,
+)
+from nnunetv2.inference.sliding_window_prediction import compute_gaussian, compute_steps_for_sliding_window
 from nnunetv2.utilities.cli_display import InferenceDisplay
+from nnunetv2.utilities.file_path_utilities import check_workers_alive_and_busy, get_output_folder
+from nnunetv2.utilities.find_class_by_name import recursive_find_python_class
+from nnunetv2.utilities.helpers import dummy_context, empty_cache
+from nnunetv2.utilities.json_export import recursive_fix_for_json_export
+from nnunetv2.utilities.label_handling.label_handling import determine_num_input_channels
+from nnunetv2.utilities.plans_handling.plans_handler import ConfigurationManager, PlansManager
+from nnunetv2.utilities.utils import create_lists_from_splitted_dataset_folder
 
 
 class nnUNetPredictor(object):
@@ -61,7 +73,7 @@ class nnUNetPredictor(object):
         if device.type == 'cuda':
             torch.backends.cudnn.benchmark = True
         else:
-            print(f'perform_everything_on_device=True is only supported for cuda devices! Setting this to False')
+            print('perform_everything_on_device=True is only supported for cuda devices! Setting this to False')
             perform_everything_on_device = False
         self.device = device
         self.perform_everything_on_device = perform_everything_on_device
@@ -547,20 +559,28 @@ class nnUNetPredictor(object):
     @torch.inference_mode()
     def _internal_maybe_mirror_and_predict(self, x: torch.Tensor) -> torch.Tensor:
         mirror_axes = self.allowed_mirroring_axes if self.use_mirroring else None
+        cb = getattr(self, "_tta_progress_cb", None)
+
+        if mirror_axes is None:
+            prediction = self.network(x)
+            if cb is not None:
+                cb(1, 1)
+            return prediction
+
+        assert max(mirror_axes) <= x.ndim - 3, 'mirror_axes does not match the dimension of the input!'
+        mirror_axes = [m + 2 for m in mirror_axes]
+        axes_combinations = [
+            c for i in range(len(mirror_axes)) for c in itertools.combinations(mirror_axes, i + 1)
+        ]
+        n_passes = len(axes_combinations) + 1
         prediction = self.network(x)
-
-        if mirror_axes is not None:
-            # check for invalid numbers in mirror_axes
-            # x should be 5d for 3d images and 4d for 2d. so the max value of mirror_axes cannot exceed len(x.shape) - 3
-            assert max(mirror_axes) <= x.ndim - 3, 'mirror_axes does not match the dimension of the input!'
-
-            mirror_axes = [m + 2 for m in mirror_axes]
-            axes_combinations = [
-                c for i in range(len(mirror_axes)) for c in itertools.combinations(mirror_axes, i + 1)
-            ]
-            for axes in axes_combinations:
-                prediction += torch.flip(self.network(torch.flip(x, axes)), axes)
-            prediction /= (len(axes_combinations) + 1)
+        if cb is not None:
+            cb(1, n_passes)
+        for pass_i, axes in enumerate(axes_combinations, start=2):
+            prediction += torch.flip(self.network(torch.flip(x, axes)), axes)
+            if cb is not None:
+                cb(pass_i, n_passes)
+        prediction /= n_passes
         return prediction
 
     @torch.inference_mode()
@@ -1091,7 +1111,7 @@ def predict_entry_point():
 
 if __name__ == '__main__':
     ########################## predict a bunch of files
-    from nnunetv2.paths import nnUNet_results, nnUNet_raw
+    from nnunetv2.paths import nnUNet_results
 
     predictor = nnUNetPredictor(
         tile_step_size=0.5,

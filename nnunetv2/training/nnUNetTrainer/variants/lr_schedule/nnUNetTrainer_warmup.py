@@ -2,11 +2,10 @@ from typing import Union
 
 import torch
 from torch._dynamo import OptimizedModule
+from torch.nn.parallel import DistributedDataParallel as DDP
 
 from nnunetv2.training.lr_scheduler.warmup import Lin_incr_LRScheduler, PolyLRScheduler_offset
 from nnunetv2.training.nnUNetTrainer.nnUNetTrainer import nnUNetTrainer
-from torch.nn.parallel import DistributedDataParallel as DDP
-
 from nnunetv2.utilities.helpers import empty_cache
 
 

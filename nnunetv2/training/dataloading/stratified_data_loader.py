@@ -2,7 +2,7 @@
 from typing import List, Optional, Tuple, Union
 
 import numpy as np
-from batchgenerators.utilities.file_and_folder_operations import load_json, isfile
+from batchgenerators.utilities.file_and_folder_operations import isfile, load_json
 
 from nnunetv2.training.dataloading.data_loader import nnUNetDataLoader
 from nnunetv2.training.dataloading.nnunet_dataset import nnUNetBaseDataset

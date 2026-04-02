@@ -64,11 +64,11 @@ def test_encode_points_intensity_scale():
 
 def test_get_bbox_overlap_contains_voxel():
     """get_bbox override returns bbox that contains selected voxel (not necessarily centered)."""
-    from nnunetv2.training.dataloading.prompt_aware_data_loader import nnUNetPromptAwareDataLoader
-    from nnunetv2.training.dataloading.nnunet_dataset import infer_dataset_class
-    from nnunetv2.utilities.plans_handling.plans_handler import PlansManager
-
     import json
+
+    from nnunetv2.training.dataloading.nnunet_dataset import infer_dataset_class
+    from nnunetv2.training.dataloading.prompt_aware_data_loader import nnUNetPromptAwareDataLoader
+    from nnunetv2.utilities.plans_handling.plans_handler import PlansManager
     cfg = load_config(FIXTURE_CONFIG)
     preprocessed_dir = os.environ.get("nnUNet_preprocessed", "") + "/Dataset010/nnUNetPlans_3d_fullres"
     if not os.path.isdir(preprocessed_dir):

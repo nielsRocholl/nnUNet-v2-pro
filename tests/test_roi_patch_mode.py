@@ -1,5 +1,8 @@
 """Per-point patch ROI helpers and merge safety."""
+from pathlib import Path
+
 import torch
+from batchgenerators.utilities.file_and_folder_operations import join
 
 from nnunetv2.inference.roi_predictor import (
     background_logits_vector,
@@ -12,9 +15,6 @@ from nnunetv2.inference.roi_predictor import (
 )
 from nnunetv2.utilities.label_handling.label_handling import LabelManager
 from nnunetv2.utilities.roi_config import InferenceConfig, load_config
-from pathlib import Path
-from batchgenerators.utilities.file_and_folder_operations import join
-
 
 FIXTURE_CONFIG = join(Path(__file__).resolve().parent, "fixtures", "nnunet_pro_config.json")
 

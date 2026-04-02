@@ -12,6 +12,7 @@ if "nnUNet_raw" not in os.environ:
     os.environ["nnUNet_results"] = os.path.join(_base, "nnUNet_results")
 
 from batchgenerators.utilities.file_and_folder_operations import join, maybe_mkdir_p
+
 import nnunetv2
 from nnunetv2.utilities.find_class_by_name import recursive_find_python_class
 

@@ -1,6 +1,6 @@
 from collections import OrderedDict
 from copy import deepcopy
-from typing import Union, Tuple, List
+from typing import List, Tuple, Union
 
 import numpy as np
 import pandas as pd
@@ -8,6 +8,7 @@ import torch
 from batchgenerators.augmentations.utils import resize_segmentation
 from scipy.ndimage import map_coordinates
 from skimage.transform import resize
+
 from nnunetv2.configuration import ANISO_THRESHOLD
 
 

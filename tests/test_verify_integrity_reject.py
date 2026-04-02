@@ -5,8 +5,8 @@ from unittest.mock import MagicMock
 
 import numpy as np
 import pytest
+from batchgenerators.utilities.file_and_folder_operations import load_json, maybe_mkdir_p, save_json
 
-from batchgenerators.utilities.file_and_folder_operations import join, load_json, maybe_mkdir_p, save_json
 from nnunetv2.experiment_planning.verify_dataset_integrity import (
     _GEOM_ATOL,
     _GEOM_RTOL,

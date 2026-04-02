@@ -1,7 +1,8 @@
 from typing import Callable
 
-import nnunetv2
 from batchgenerators.utilities.file_and_folder_operations import join
+
+import nnunetv2
 from nnunetv2.utilities.find_class_by_name import recursive_find_python_class
 
 

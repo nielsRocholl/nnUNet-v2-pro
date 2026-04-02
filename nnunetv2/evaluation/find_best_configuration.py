@@ -1,19 +1,23 @@
 import argparse
 import os.path
 from copy import deepcopy
-from typing import Union, List, Tuple
+from typing import List, Tuple, Union
 
-from batchgenerators.utilities.file_and_folder_operations import (
-    load_json, join, isdir, listdir, save_json
-)
+from batchgenerators.utilities.file_and_folder_operations import isdir, join, listdir, load_json, save_json
+
 from nnunetv2.configuration import default_num_processes
 from nnunetv2.ensembling.ensemble import ensemble_crossvalidations
 from nnunetv2.evaluation.accumulate_cv_results import accumulate_cv_results
 from nnunetv2.evaluation.evaluate_predictions import compute_metrics_on_folder, load_summary_json
-from nnunetv2.paths import nnUNet_preprocessed, nnUNet_raw, nnUNet_results
+from nnunetv2.paths import nnUNet_preprocessed, nnUNet_results
 from nnunetv2.postprocessing.remove_connected_components import determine_postprocessing
-from nnunetv2.utilities.file_path_utilities import maybe_convert_to_dataset_name, get_output_folder, \
-    convert_identifier_to_trainer_plans_config, get_ensemble_name, folds_tuple_to_string
+from nnunetv2.utilities.file_path_utilities import (
+    convert_identifier_to_trainer_plans_config,
+    folds_tuple_to_string,
+    get_ensemble_name,
+    get_output_folder,
+    maybe_convert_to_dataset_name,
+)
 from nnunetv2.utilities.plans_handling.plans_handler import PlansManager
 
 default_trained_models = tuple([
@@ -234,7 +238,7 @@ def print_inference_instructions(inference_info_dict: dict, instructions_file: s
         if is_ensemble:
             output_folder_name = f"OUTPUT_FOLDER_MODEL_{j+1}"
         else:
-            output_folder_name = f"OUTPUT_FOLDER"
+            output_folder_name = "OUTPUT_FOLDER"
         output_folders.append(output_folder_name)
 
         _print_and_maybe_write_to_file(generate_inference_command(dataset_name_or_id, c, pl, tr, inference_info_dict['folds'],
@@ -244,7 +248,7 @@ def print_inference_instructions(inference_info_dict: dict, instructions_file: s
         output_folder_str = output_folders[0]
         for o in output_folders[1:]:
             output_folder_str += f' {o}'
-        output_ensemble = f"OUTPUT_FOLDER"
+        output_ensemble = "OUTPUT_FOLDER"
         _print_and_maybe_write_to_file('\nThe run ensembling with:\n')
         _print_and_maybe_write_to_file(f"nnUNetv2_ensemble -i {output_folder_str} -o {output_ensemble} -np {default_num_processes}")
 

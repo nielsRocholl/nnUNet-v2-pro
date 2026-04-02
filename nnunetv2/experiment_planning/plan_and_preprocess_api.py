@@ -1,20 +1,19 @@
 import os
-import warnings
-from typing import List, Type, Optional, Tuple, Union
+from typing import List, Optional, Tuple, Type, Union
 
-from batchgenerators.utilities.file_and_folder_operations import join, maybe_mkdir_p, load_json
+from batchgenerators.utilities.file_and_folder_operations import join, load_json, maybe_mkdir_p
+from rich.console import Console
 
 import nnunetv2
 from nnunetv2.configuration import default_num_processes
 from nnunetv2.experiment_planning.dataset_fingerprint.fingerprint_extractor import DatasetFingerprintExtractor
 from nnunetv2.experiment_planning.experiment_planners.default_experiment_planner import ExperimentPlanner
 from nnunetv2.experiment_planning.verify_dataset_integrity import verify_dataset_integrity
-from nnunetv2.paths import nnUNet_raw, nnUNet_preprocessed
+from nnunetv2.paths import nnUNet_preprocessed, nnUNet_raw
 from nnunetv2.utilities.dataset_name_id_conversion import convert_id_to_dataset_name
 from nnunetv2.utilities.find_class_by_name import recursive_find_python_class
 from nnunetv2.utilities.plans_handling.plans_handler import PlansManager
 from nnunetv2.utilities.utils import get_filenames_of_train_images_and_targets
-from rich.console import Console
 
 
 def extract_fingerprint_dataset(dataset_id: int,

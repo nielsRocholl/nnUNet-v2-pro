@@ -1,5 +1,5 @@
 import os
-from typing import Optional, List
+from typing import List, Optional
 
 
 def resolve_wandb_config(

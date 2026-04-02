@@ -1,13 +1,15 @@
 from abc import abstractmethod
 from typing import List, Tuple, Union
+
 import torch
-from torch import nn, autocast
 from dynamic_network_architectures.architectures.primus import Primus
+from torch import autocast, nn
+from torch.nn.parallel import DistributedDataParallel as DDP
+
+from nnunetv2.training.lr_scheduler.warmup import Lin_incr_LRScheduler, PolyLRScheduler_offset
 from nnunetv2.training.nnUNetTrainer.nnUNetTrainer import nnUNetTrainer
 from nnunetv2.training.nnUNetTrainer.variants.lr_schedule.nnUNetTrainer_warmup import nnUNetTrainer_warmup
-from torch.nn.parallel import DistributedDataParallel as DDP
-from nnunetv2.training.lr_scheduler.warmup import Lin_incr_LRScheduler, PolyLRScheduler_offset
-from nnunetv2.utilities.helpers import empty_cache, dummy_context
+from nnunetv2.utilities.helpers import dummy_context, empty_cache
 
 ######################################################
 # See this paper for information on Primus!

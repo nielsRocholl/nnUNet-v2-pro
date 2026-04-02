@@ -69,6 +69,7 @@ nnUNetv2_train = "nnunetv2.run.run_training:run_training_entry"
 nnUNetv2_predict_from_modelfolder = "nnunetv2.inference.predict_from_raw_data:predict_entry_point_modelfolder"
 nnUNetv2_predict = "nnunetv2.inference.predict_from_raw_data:predict_entry_point"
 nnUNetv2_predict_roi = "nnunetv2.inference.roi_predict_entrypoint:predict_roi_entry_point"
+nnUNetv2_predict_single_patch = "nnunetv2.inference.single_patch_predict_entrypoint:predict_single_patch_entry_point"
 nnUNetv2_convert_old_nnUNet_dataset = "nnunetv2.dataset_conversion.convert_raw_dataset_from_old_nnunet_format:convert_entry_point"
 nnUNetv2_find_best_configuration = "nnunetv2.evaluation.find_best_configuration:find_best_configuration_entry_point"
 nnUNetv2_determine_postprocessing = "nnunetv2.postprocessing.remove_connected_components:entry_point_determine_postprocessing_folder"
@@ -86,8 +87,7 @@ nnUNetv2_convert_MSD_dataset = "nnunetv2.dataset_conversion.convert_MSD_dataset:
 
 [project.optional-dependencies]
 dev = [
-    "black",
-    "ruff",
+    "ruff>=0.8.0",
     "pre-commit",
     "pytest"
 ]
@@ -109,3 +109,15 @@ nnunetv2 = ["utilities/nnunet_pro_config.json"]
 skip = '.git,*.pdf,*.svg'
 #
 # ignore-words-list = ''
+
+[tool.ruff]
+target-version = "py310"
+line-length = 120
+extend-exclude = ["*.egg-info", "build", "dist"]
+
+[tool.ruff.lint]
+# Pyflakes on full upstream nnU-Net is too noisy (star imports, __main__ blocks). Isort-only keeps CI green.
+select = ["I"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["nnunetv2"]

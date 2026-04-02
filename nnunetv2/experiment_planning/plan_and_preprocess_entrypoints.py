@@ -1,8 +1,9 @@
+from rich.console import Console
+
 from nnunetv2.configuration import default_num_processes
 from nnunetv2.experiment_planning.plan_and_preprocess_api import extract_fingerprints, plan_experiments, preprocess
 from nnunetv2.utilities.dataset_name_id_conversion import convert_dataset_name_to_id, convert_id_to_dataset_name
 from nnunetv2.utilities.multi_dataset_merge import create_merged_dataset
-from rich.console import Console
 
 
 def _resolve_dataset_ids(args) -> list:

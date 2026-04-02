@@ -1,12 +1,12 @@
-from typing import Dict, Any
-import os
-from os.path import join
 import json
-import random
 import multiprocessing
+import os
+import random
+from os.path import join
+from typing import Any, Dict
 
-import SimpleITK as sitk
 import numpy as np
+import SimpleITK as sitk
 from tqdm import tqdm
 
 

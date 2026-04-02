@@ -1,8 +1,9 @@
 import torch
+from torch.optim.lr_scheduler import CosineAnnealingLR
 
 from nnunetv2.training.lr_scheduler.polylr import PolyLRScheduler
 from nnunetv2.training.nnUNetTrainer.nnUNetTrainer import nnUNetTrainer
-from torch.optim.lr_scheduler import CosineAnnealingLR
+
 try:
     from adan_pytorch import Adan
 except ImportError:

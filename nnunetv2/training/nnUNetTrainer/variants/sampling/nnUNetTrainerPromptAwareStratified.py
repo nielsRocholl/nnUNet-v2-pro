@@ -1,7 +1,7 @@
 """Trainer: prompt-aware + stratified batch sampling. Requires case_stats_{config}.json."""
 from batchgenerators.dataloading.nondet_multi_threaded_augmenter import NonDetMultiThreadedAugmenter
 from batchgenerators.dataloading.single_threaded_augmenter import SingleThreadedAugmenter
-from batchgenerators.utilities.file_and_folder_operations import join, isfile
+from batchgenerators.utilities.file_and_folder_operations import isfile, join
 
 from nnunetv2.training.dataloading.nnunet_dataset import infer_dataset_class
 from nnunetv2.training.dataloading.prompt_aware_data_loader import nnUNetPromptAwareDataLoader

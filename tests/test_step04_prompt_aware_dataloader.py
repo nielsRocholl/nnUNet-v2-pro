@@ -279,7 +279,6 @@ def _count_cc_label_prompt(label: np.ndarray, prompt: np.ndarray, prompt_thresh:
 
 def test_step04_cc_label_prompt_match():
     """Count cc in label and prompt; assert they match for pos-mode patches."""
-    import cc3d
 
     cfg = load_config(FIXTURE_CONFIG)
     dl = _get_real_preprocessed_dataloader(cfg, batch_size=1, oversample=1.0)

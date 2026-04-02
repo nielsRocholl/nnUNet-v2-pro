@@ -1,14 +1,13 @@
 import multiprocessing
 import shutil
-from multiprocessing import Pool
 
+from acvl_utils.morphology.morphology_helper import generic_filter_components
 from batchgenerators.utilities.file_and_folder_operations import *
+from scipy.ndimage import binary_fill_holes
+from skimage import io
 
 from nnunetv2.dataset_conversion.generate_dataset_json import generate_dataset_json
 from nnunetv2.paths import nnUNet_raw
-from skimage import io
-from acvl_utils.morphology.morphology_helper import generic_filter_components
-from scipy.ndimage import binary_fill_holes
 
 
 def load_and_convert_case(input_image: str, input_seg: str, output_image: str, output_seg: str,

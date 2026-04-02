@@ -3,7 +3,7 @@ from collections import defaultdict
 from typing import List, Optional
 
 import numpy as np
-from batchgenerators.utilities.file_and_folder_operations import join, load_json, isfile
+from batchgenerators.utilities.file_and_folder_operations import isfile, load_json
 
 
 def _dice_from_tp_fp_fn(tp: np.ndarray, fp: np.ndarray, fn: np.ndarray) -> float:

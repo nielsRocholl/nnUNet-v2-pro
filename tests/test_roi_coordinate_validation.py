@@ -78,7 +78,9 @@ def test_round_trip_zyx_world():
 def test_roi_inference_all_formats():
     """Integration: ROI inference with each format on Dataset010 or Dataset010_CECT."""
     import sys
+
     from batchgenerators.utilities.file_and_folder_operations import join, load_json
+
     from nnunetv2.inference.roi_predict_entrypoint import predict_roi_entry_point
     from nnunetv2.utilities.file_path_utilities import get_output_folder
     from nnunetv2.utilities.utils import get_identifiers_from_splitted_dataset_folder

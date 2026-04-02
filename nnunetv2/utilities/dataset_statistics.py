@@ -1,7 +1,7 @@
 """Collect per-case dataset statistics during multi-dataset preprocessing."""
-import numpy as np
 import blosc2
-from batchgenerators.utilities.file_and_folder_operations import join, isfile, save_json
+import numpy as np
+from batchgenerators.utilities.file_and_folder_operations import isfile, join, save_json
 from scipy.ndimage import label
 
 from nnunetv2.training.dataloading.nnunet_dataset import nnUNetDatasetBlosc2

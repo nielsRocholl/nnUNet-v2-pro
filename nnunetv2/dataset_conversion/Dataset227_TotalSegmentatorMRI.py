@@ -1,12 +1,9 @@
-import SimpleITK
 import nibabel
 import numpy as np
 from batchgenerators.utilities.file_and_folder_operations import *
-import shutil
+
 from nnunetv2.dataset_conversion.generate_dataset_json import generate_dataset_json
 from nnunetv2.paths import nnUNet_raw
-
-
 
 if __name__ == '__main__':
     base = '/home/isensee/Downloads/TotalsegmentatorMRI_dataset_v100'

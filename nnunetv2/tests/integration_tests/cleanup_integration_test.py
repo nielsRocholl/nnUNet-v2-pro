@@ -2,7 +2,7 @@ import shutil
 
 from batchgenerators.utilities.file_and_folder_operations import isdir, join
 
-from nnunetv2.paths import nnUNet_raw, nnUNet_results, nnUNet_preprocessed
+from nnunetv2.paths import nnUNet_preprocessed, nnUNet_raw, nnUNet_results
 
 if __name__ == '__main__':
     # deletes everything!

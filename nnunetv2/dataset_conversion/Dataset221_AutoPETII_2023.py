@@ -1,7 +1,9 @@
-from batchgenerators.utilities.file_and_folder_operations import *
 import shutil
+
+from batchgenerators.utilities.file_and_folder_operations import *
+
 from nnunetv2.dataset_conversion.generate_dataset_json import generate_dataset_json
-from nnunetv2.paths import nnUNet_raw, nnUNet_preprocessed
+from nnunetv2.paths import nnUNet_preprocessed, nnUNet_raw
 
 
 def convert_autopet(autopet_base_dir:str = '/media/isensee/My Book1/AutoPET/nifti/FDG-PET-CT-Lesions',

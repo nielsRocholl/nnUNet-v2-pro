@@ -1,6 +1,6 @@
 import numpy as np
+from acvl_utils.cropping_and_padding.bounding_boxes import bounding_box_to_slice, get_bbox_from_mask
 from scipy.ndimage import binary_fill_holes
-from acvl_utils.cropping_and_padding.bounding_boxes import get_bbox_from_mask, bounding_box_to_slice
 
 
 def create_nonzero_mask(data):

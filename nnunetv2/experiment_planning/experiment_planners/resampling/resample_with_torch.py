@@ -1,9 +1,10 @@
-from typing import Union, List, Tuple
+from typing import List, Tuple, Union
 
 from nnunetv2.configuration import ANISO_THRESHOLD
 from nnunetv2.experiment_planning.experiment_planners.default_experiment_planner import ExperimentPlanner
-from nnunetv2.experiment_planning.experiment_planners.residual_unets.residual_encoder_unet_planners import \
-    nnUNetPlannerResEncL
+from nnunetv2.experiment_planning.experiment_planners.residual_unets.residual_encoder_unet_planners import (
+    nnUNetPlannerResEncL,
+)
 from nnunetv2.preprocessing.resampling.resample_torch import resample_torch_fornnunet
 
 

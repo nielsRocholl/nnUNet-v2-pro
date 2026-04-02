@@ -1,8 +1,9 @@
-import torch
-from nnunetv2.training.loss.deep_supervision import DeepSupervisionWrapper
-from nnunetv2.training.nnUNetTrainer.nnUNetTrainer import nnUNetTrainer
-from nnunetv2.training.loss.robust_ce_loss import RobustCrossEntropyLoss
 import numpy as np
+import torch
+
+from nnunetv2.training.loss.deep_supervision import DeepSupervisionWrapper
+from nnunetv2.training.loss.robust_ce_loss import RobustCrossEntropyLoss
+from nnunetv2.training.nnUNetTrainer.nnUNetTrainer import nnUNetTrainer
 
 
 class nnUNetTrainerCELoss(nnUNetTrainer):

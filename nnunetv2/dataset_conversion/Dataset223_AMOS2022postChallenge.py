@@ -1,8 +1,9 @@
 import shutil
 
 from batchgenerators.utilities.file_and_folder_operations import *
-from nnunetv2.paths import nnUNet_raw
+
 from nnunetv2.dataset_conversion.generate_dataset_json import generate_dataset_json
+from nnunetv2.paths import nnUNet_raw
 
 if __name__ == '__main__':
     downloaded_amos_dir = '/home/isensee/amos22/amos22' # downloaded and extracted from https://zenodo.org/record/7155725#.Y0OOCOxBztM

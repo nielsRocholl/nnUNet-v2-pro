@@ -1,31 +1,28 @@
 from __future__ import annotations
 
 import warnings
-
 from copy import deepcopy
 from functools import lru_cache, partial
-from typing import Union, Tuple, List, Type, Callable
+
+# see https://adamj.eu/tech/2021/05/13/python-type-hints-how-to-fix-circular-imports/
+from typing import TYPE_CHECKING, Callable, List, Tuple, Type, Union
 
 import numpy as np
 import torch
+from batchgenerators.utilities.file_and_folder_operations import join, load_json
+from dynamic_network_architectures.building_blocks.helper import convert_dim_to_conv_op, get_matching_instancenorm
 
-from nnunetv2.preprocessing.resampling.utils import recursive_find_resampling_fn_by_name
 import nnunetv2
-from batchgenerators.utilities.file_and_folder_operations import load_json, join
-
 from nnunetv2.imageio.reader_writer_registry import recursive_find_reader_writer_by_name
+from nnunetv2.preprocessing.resampling.utils import recursive_find_resampling_fn_by_name
 from nnunetv2.utilities.find_class_by_name import recursive_find_python_class
 from nnunetv2.utilities.label_handling.label_handling import get_labelmanager_class_from_plans
 
-# see https://adamj.eu/tech/2021/05/13/python-type-hints-how-to-fix-circular-imports/
-from typing import TYPE_CHECKING
-from dynamic_network_architectures.building_blocks.helper import convert_dim_to_conv_op, get_matching_instancenorm
-
 if TYPE_CHECKING:
-    from nnunetv2.utilities.label_handling.label_handling import LabelManager
+    from nnunetv2.experiment_planning.experiment_planners.default_experiment_planner import ExperimentPlanner
     from nnunetv2.imageio.base_reader_writer import BaseReaderWriter
     from nnunetv2.preprocessing.preprocessors.default_preprocessor import DefaultPreprocessor
-    from nnunetv2.experiment_planning.experiment_planners.default_experiment_planner import ExperimentPlanner
+    from nnunetv2.utilities.label_handling.label_handling import LabelManager
 
 
 class ConfigurationManager(object):

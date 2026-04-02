@@ -1,7 +1,7 @@
 import torch
+import torch.distributed as dist
 from torch._dynamo import OptimizedModule
 from torch.nn.parallel import DistributedDataParallel as DDP
-import torch.distributed as dist
 
 
 def load_pretrained_weights(network, fname, verbose=False):

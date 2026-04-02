@@ -1,9 +1,10 @@
 import multiprocessing
 import shutil
 
-import SimpleITK as sitk
 import numpy as np
+import SimpleITK as sitk
 from batchgenerators.utilities.file_and_folder_operations import *
+
 from nnunetv2.dataset_conversion.generate_dataset_json import generate_dataset_json
 from nnunetv2.paths import nnUNet_raw
 

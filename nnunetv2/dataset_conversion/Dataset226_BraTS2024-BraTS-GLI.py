@@ -1,5 +1,6 @@
+from batchgenerators.utilities.file_and_folder_operations import join, maybe_mkdir_p, subdirs
+
 from nnunetv2.dataset_conversion.generate_dataset_json import generate_dataset_json
-from batchgenerators.utilities.file_and_folder_operations import join, subdirs, subfiles, maybe_mkdir_p
 from nnunetv2.paths import nnUNet_raw
 
 if __name__ == '__main__':

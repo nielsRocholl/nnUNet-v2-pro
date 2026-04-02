@@ -5,8 +5,8 @@ import sys
 from pathlib import Path
 
 import pytest
+from batchgenerators.utilities.file_and_folder_operations import load_json
 
-from batchgenerators.utilities.file_and_folder_operations import join, load_json
 from nnunetv2.training.dataloading.nnunet_dataset import infer_dataset_class
 from nnunetv2.training.dataloading.stratified_data_loader import (
     nnUNetPromptAwareStratifiedDataLoader,
@@ -156,6 +156,7 @@ def test_sample_batch_with_weights():
 
 def test_stratified_requires_case_stats(tmp_path):
     import numpy as np
+
     from nnunetv2.training.dataloading.nnunet_dataset import nnUNetBaseDataset
     from nnunetv2.utilities.label_handling.label_handling import LabelManager
 

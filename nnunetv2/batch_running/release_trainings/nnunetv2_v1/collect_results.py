@@ -5,7 +5,7 @@ from batchgenerators.utilities.file_and_folder_operations import *
 
 from nnunetv2.evaluation.evaluate_predictions import load_summary_json
 from nnunetv2.paths import nnUNet_results
-from nnunetv2.utilities.dataset_name_id_conversion import maybe_convert_to_dataset_name, convert_dataset_name_to_id
+from nnunetv2.utilities.dataset_name_id_conversion import convert_dataset_name_to_id, maybe_convert_to_dataset_name
 from nnunetv2.utilities.file_path_utilities import get_output_folder
 
 
