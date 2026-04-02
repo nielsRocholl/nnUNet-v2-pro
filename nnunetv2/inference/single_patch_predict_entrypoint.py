@@ -83,6 +83,8 @@ def single_patch_infer_one(
     encode_prompt: bool,
     save_debug_patch: Optional[str],
     save_debug_patch_prompts: bool,
+    border_expand: bool,
+    max_border_expand_extra: int,
     labels_folder: Optional[str],
     file_ending: str,
     label_manager,
@@ -151,6 +153,8 @@ def single_patch_infer_one(
         debug_sp,
         debug_geom,
         save_debug_patch_prompts,
+        border_expand=border_expand,
+        max_border_expand_extra=max_border_expand_extra,
     )
 
     dice = None
@@ -248,7 +252,20 @@ def predict_single_patch_entry_point():
         action="store_true",
         help="With --save_debug_patch, also write 3D prompt channels {stem}_prompt_0/1.nii.gz.",
     )
+    parser.add_argument(
+        "--border_expand",
+        action="store_true",
+        help="After the seed tile, iteratively add tiles from hull border contacts (all touching faces per shell CC); merge with Gaussian weights.",
+    )
+    parser.add_argument(
+        "--border_expand_max_extra",
+        type=int,
+        default=16,
+        help="Max additional network tiles per fold after the seed (default: 16); expansion stops when the queue is empty or this cap is hit.",
+    )
     args = parser.parse_args()
+    if args.border_expand_max_extra < 0:
+        parser.error("--border_expand_max_extra must be >= 0")
 
     if args.stdin_loop and args.points_json == "-":
         raise ValueError("--stdin_loop cannot be combined with --points_json - (stdin conflict).")
@@ -380,6 +397,8 @@ def predict_single_patch_entry_point():
                     encode_prompt=args.encode_prompt,
                     save_debug_patch=args.save_debug_patch,
                     save_debug_patch_prompts=args.save_debug_patch_prompts,
+                    border_expand=args.border_expand,
+                    max_border_expand_extra=args.border_expand_max_extra,
                     labels_folder=args.labels_folder,
                     file_ending=file_ending,
                     label_manager=label_manager,
@@ -406,6 +425,8 @@ def predict_single_patch_entry_point():
                 encode_prompt=args.encode_prompt,
                 save_debug_patch=args.save_debug_patch,
                 save_debug_patch_prompts=args.save_debug_patch_prompts,
+                border_expand=args.border_expand,
+                max_border_expand_extra=args.border_expand_max_extra,
                 labels_folder=args.labels_folder,
                 file_ending=file_ending,
                 label_manager=label_manager,

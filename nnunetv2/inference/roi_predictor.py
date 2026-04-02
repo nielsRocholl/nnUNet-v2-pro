@@ -1,8 +1,9 @@
 """ROI-only inference: prompt-aware local sliding windows, no full-volume sliding."""
 import os
 from collections import deque
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple
 
+import cc3d
 import nibabel as nib
 import numpy as np
 import torch
@@ -224,6 +225,116 @@ def touching_patch_faces_from_logits(
     if fg[:, :, dx - 1].any():
         faces.append((2, False))
     return faces
+
+
+def _patch_fg_bool_from_logits(patch_logits: torch.Tensor, label_manager) -> np.ndarray:
+    seg = label_manager.convert_logits_to_segmentation(patch_logits.float().cpu())
+    if isinstance(seg, torch.Tensor):
+        seg = seg.numpy()
+    fg = np.zeros(seg.shape, dtype=bool)
+    if label_manager.has_regions:
+        fg = seg > 0
+    else:
+        for fl in label_manager.foreground_labels:
+            fg |= seg == fl
+    return fg
+
+
+def plan_border_expansion_centers_from_fg(
+    fg: np.ndarray,
+    sz: slice,
+    sy: slice,
+    sx: slice,
+    patch_size: Tuple[int, int, int],
+    padded_shape: Tuple[int, int, int],
+    seed_key: Tuple[int, int, int, int, int, int],
+    max_centers: int,
+    quant_vox: Optional[int] = None,
+    skip_keys: Optional[Set[Tuple[int, int, int, int, int, int]]] = None,
+) -> List[Tuple[int, int, int]]:
+    if max_centers <= 0 or not fg.any():
+        return []
+    dz, dy, dx = fg.shape
+    hull = np.zeros((dz, dy, dx), dtype=bool)
+    hull[0] = hull[dz - 1] = True
+    hull[:, 0] = hull[:, dy - 1] = True
+    hull[:, :, 0] = hull[:, :, dx - 1] = True
+    shell = fg & hull
+    if not shell.any():
+        return []
+    lab = cc3d.connected_components(shell.astype(np.uint8), connectivity=26)
+    n_lab = int(lab.max())
+    if n_lab == 0:
+        return []
+    sizes = [(lab == i).sum() for i in range(1, n_lab + 1)]
+    order = sorted(range(1, n_lab + 1), key=lambda i: sizes[i - 1], reverse=True)
+    qv = quant_vox if quant_vox is not None else max(1, min(patch_size) // 8)
+    skip = skip_keys if skip_keys is not None else set()
+    seen: set = set()
+    out: List[Tuple[int, int, int]] = []
+    face_opts = [(0, True), (0, False), (1, True), (1, False), (2, True), (2, False)]
+    for li in order:
+        if len(out) >= max_centers:
+            break
+        zz_i, yy_i, xx_i = np.where(lab == li)
+        if zz_i.size == 0:
+            continue
+        mz, my, mx = float(zz_i.mean()), float(yy_i.mean()), float(xx_i.mean())
+        c_fac = [
+            np.sum(zz_i == 0),
+            np.sum(zz_i == dz - 1),
+            np.sum(yy_i == 0),
+            np.sum(yy_i == dy - 1),
+            np.sum(xx_i == 0),
+            np.sum(xx_i == dx - 1),
+        ]
+        face_indices = [i for i in range(6) if c_fac[i] > 0]
+        face_indices.sort(key=lambda i: c_fac[i], reverse=True)
+        for fi in face_indices:
+            if len(out) >= max_centers:
+                break
+            axis, is_low = face_opts[fi]
+            nsz, nsy, nsx = shift_spatial_slices(sz, sy, sx, axis, is_low, patch_size, padded_shape)
+            Z0 = int(np.clip(sz.start + int(round(mz)), 0, padded_shape[0] - 1))
+            Y0 = int(np.clip(sy.start + int(round(my)), 0, padded_shape[1] - 1))
+            X0 = int(np.clip(sx.start + int(round(mx)), 0, padded_shape[2] - 1))
+            if axis == 0:
+                pz = int(np.clip(nsz.start + patch_size[0] // 2, 0, padded_shape[0] - 1))
+                py, px = Y0, X0
+            elif axis == 1:
+                pz, py, px = Z0, int(np.clip(nsy.start + patch_size[1] // 2, 0, padded_shape[1] - 1)), X0
+            else:
+                pz, py, px = Z0, Y0, int(np.clip(nsx.start + patch_size[2] // 2, 0, padded_shape[2] - 1))
+            if qv > 1:
+                pz = (pz // qv) * qv
+                py = (py // qv) * qv
+                px = (px // qv) * qv
+            cz, cy, cx = centered_spatial_slices_at_point(pz, py, px, patch_size, padded_shape)
+            s2 = spatial_slices_to_tuple(cz, cy, cx)
+            if s2 == seed_key or s2 in seen or s2 in skip:
+                continue
+            seen.add(s2)
+            out.append((pz, py, px))
+    return out
+
+
+def plan_border_expansion_centers_from_logits(
+    patch_logits: torch.Tensor,
+    label_manager,
+    sz: slice,
+    sy: slice,
+    sx: slice,
+    patch_size: Tuple[int, int, int],
+    padded_shape: Tuple[int, int, int],
+    seed_key: Tuple[int, int, int, int, int, int],
+    max_centers: int,
+    quant_vox: Optional[int] = None,
+    skip_keys: Optional[Set[Tuple[int, int, int, int, int, int]]] = None,
+) -> List[Tuple[int, int, int]]:
+    fg = _patch_fg_bool_from_logits(patch_logits, label_manager)
+    return plan_border_expansion_centers_from_fg(
+        fg, sz, sy, sx, patch_size, padded_shape, seed_key, max_centers, quant_vox, skip_keys
+    )
 
 
 def background_logits_vector(
@@ -580,6 +691,8 @@ class nnUNetROIPredictor(nnUNetPredictor):
         debug_patch_spacing_zyx: Optional[Tuple[float, float, float]] = None,
         save_debug_patch_prompts: bool = False,
         debug_native_geometry: Optional[Dict[str, Any]] = None,
+        border_expand: bool = False,
+        max_border_expand_extra: int = 16,
     ) -> torch.Tensor:
         """One tile centered on the first seed; optional patch-local prompt heatmap (no dilated ROI sliding)."""
         from torch._dynamo import OptimizedModule
@@ -601,6 +714,9 @@ class nnUNetROIPredictor(nnUNetPredictor):
                 debug_patch_spacing_zyx=debug_patch_spacing_zyx,
                 save_debug_patch_prompts=save_debug_patch_prompts,
                 debug_native_geometry=debug_native_geometry if fi == 0 else None,
+                border_expand=border_expand,
+                max_border_expand_extra=max_border_expand_extra,
+                report_border_tile_progress=(fi == 0),
             )
             if prediction is None:
                 prediction = fold_logits
@@ -621,6 +737,9 @@ class nnUNetROIPredictor(nnUNetPredictor):
         debug_patch_spacing_zyx: Optional[Tuple[float, float, float]] = None,
         save_debug_patch_prompts: bool = False,
         debug_native_geometry: Optional[Dict[str, Any]] = None,
+        border_expand: bool = False,
+        max_border_expand_extra: int = 16,
+        report_border_tile_progress: bool = True,
     ) -> torch.Tensor:
         if not points_zyx:
             raise ValueError(
@@ -702,6 +821,81 @@ class nnUNetROIPredictor(nnUNetPredictor):
             pred = pred_raw * gaussian if self.use_gaussian else pred_raw
             predicted_logits[(slice(None), sz, sy, sx)] += pred
             n_predictions[sz, sy, sx] += gaussian
+
+            seed_key = spatial_slices_to_tuple(sz, sy, sx)
+            bfcb = getattr(self, "_border_tile_progress_cb", None)
+            total_bt = 1 + max_border_expand_extra
+            if report_border_tile_progress and border_expand and bfcb is not None:
+                bfcb(1, total_bt)
+
+            if border_expand:
+                visited_keys: Set[Tuple[int, int, int, int, int, int]] = {seed_key}
+                q: deque = deque(
+                    plan_border_expansion_centers_from_logits(
+                        pred_raw,
+                        self.label_manager,
+                        sz,
+                        sy,
+                        sx,
+                        patch_size,
+                        padded_shape,
+                        seed_key,
+                        max_border_expand_extra,
+                        skip_keys=visited_keys,
+                    )
+                )
+                tiles_done = 0
+                while q and tiles_done < max_border_expand_extra:
+                    pz_e, py_e, px_e = q.popleft()
+                    sz_e, sy_e, sx_e = centered_spatial_slices_at_point(
+                        pz_e, py_e, px_e, patch_size, padded_shape
+                    )
+                    k_e = spatial_slices_to_tuple(sz_e, sy_e, sx_e)
+                    if k_e in visited_keys:
+                        continue
+                    visited_keys.add(k_e)
+                    sl_e = (slice(None), sz_e, sy_e, sx_e)
+                    img_e = data_padded[sl_e].clone().unsqueeze(0)
+                    if encode_prompt:
+                        loc_e = local_prompt_points_for_patch(
+                            seed_pad, sz_e, sy_e, sx_e, patch_size
+                        )
+                        pr_e = encode_points_to_heatmap_pair(
+                            loc_e,
+                            [],
+                            patch_size,
+                            prompt_cfg.point_radius_vox,
+                            prompt_cfg.encoding,
+                            device=self.device,
+                            intensity_scale=prompt_cfg.prompt_intensity_scale,
+                        ).to(dtype=img_e.dtype)
+                    else:
+                        pr_e = torch.zeros(2, *patch_size, dtype=img_e.dtype, device=self.device)
+                    work_e = torch.cat([img_e[0], pr_e], dim=0).unsqueeze(0).contiguous()
+                    raw_e = self._internal_maybe_mirror_and_predict(work_e)[0].to(results_device)
+                    pred_e = raw_e * gaussian if self.use_gaussian else raw_e
+                    predicted_logits[sl_e] += pred_e
+                    n_predictions[sz_e, sy_e, sx_e] += gaussian
+                    tiles_done += 1
+                    if report_border_tile_progress and bfcb is not None:
+                        bfcb(1 + tiles_done, total_bt)
+                    budget = max_border_expand_extra - tiles_done
+                    if budget > 0:
+                        for c in plan_border_expansion_centers_from_logits(
+                            raw_e,
+                            self.label_manager,
+                            sz_e,
+                            sy_e,
+                            sx_e,
+                            patch_size,
+                            padded_shape,
+                            seed_key,
+                            budget,
+                            skip_keys=visited_keys,
+                        ):
+                            q.append(c)
+                if self.verbose and tiles_done:
+                    print(f"[single_patch] border_expand: {tiles_done} extra tile(s)", flush=True)
 
             safe_divide_merged_logits(predicted_logits, n_predictions, bg_vec)
             predicted_logits = predicted_logits[(slice(None), *slicer_revert[1:])]

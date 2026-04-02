@@ -41,6 +41,8 @@ setting the `nnUNet_n_proc_DA` environment variable (`export nnUNet_n_proc_DA=XX
 Recommended values (assuming a recent CPU with good IPC) are 10-12 for RTX 2080 ti, 12 for a RTX 3090, 16-18 for 
 RTX 4090, 28-32 for A100. Optimal values may vary depending on the number of input channels/modalities and number of classes.
 
+**Shared clusters / ZFS / multi-tenant nodes:** High `nnUNet_n_proc_DA` can saturate disk and idle the GPU. See [cluster training runbook](pro/cluster_training_runbook.md) (nnUNet-pro).
+
 # Installation instructions
 We strongly recommend that you install nnU-Net in a virtual environment! Pip or anaconda are both fine. If you choose to 
 compile PyTorch from source (see below), you will need to use conda instead of pip. 

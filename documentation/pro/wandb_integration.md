@@ -154,6 +154,18 @@ Per-dataset and per-size-bin require `case_stats_{config}.json` (from Step 11). 
 - `num_iterations_per_epoch` - Training iterations per epoch
 - `num_val_iterations_per_epoch` - Validation iterations per epoch
 
+## epoch_time: slow epochs and spikes
+
+`epoch_time` (seconds) is **wall clock for an entire epoch**: all training batches for that epoch, validation batches, then epoch-end work (logging, progress PNG, **checkpoint** writes when `save_every` matches or **best** model improves, W&B upload). It is **not** a pure GPU kernel timer.
+
+**How to use it in W&B**
+
+- Compare `epoch_time` to **`save_every`** (default 50 in the trainer): recurring spikes every *k* epochs may be **checkpoint + disk**.
+- Sudden jumps that do **not** correlate with `save_every` often indicate **shared-node I/O**, **ZFS**, or **too many augmenter workers** (`nnUNet_n_proc_DA`) starving the GPU — not a mysterious training regression.
+- Cross-check GPU utilization on the cluster (`nvidia-smi dmon`) when `epoch_time` is high.
+
+Full context: [cluster training runbook](cluster_training_runbook.md).
+
 ## Resuming Training
 
 When continuing training with `--c` flag, wandb will automatically resume the previous run:

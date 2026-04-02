@@ -2,6 +2,11 @@
 # Train Dataset999 with nnUNetTrainerPromptAware.
 # Safeguards: pre-flight check before rclone; array-based TRAIN_CMD to avoid
 # backslash-continuation bugs (trailing \ would append next line as CLI args).
+#
+# Shared-node note: nnUNet_n_proc_DA is processes per GPU for the augmenter (~N train + N/2 val).
+# If GPU util hits 0% or the node disks saturate, lower it (e.g. 4–8) before raising --cpus-per-task.
+# Hostname superh200 defaults to 48 when unset — see nnunetv2/utilities/default_n_proc_DA.py
+# and documentation/pro/cluster_training_runbook.md
 #SBATCH --qos=vram
 #SBATCH --nodelist=dlc-slowpoke
 #SBATCH --ntasks=1

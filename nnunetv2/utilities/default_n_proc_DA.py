@@ -15,6 +15,10 @@ def get_allowed_n_proc_DA():
     The way it is implemented here is simply a look up table. We know the hostnames, CPU and GPU configurations of our
     systems and set the numbers accordingly. For example, a system with 4 GPUs and 48 threads can use 12 threads per
     GPU without overloading the CPU (technically 11 because we have a main process as well), so that's what we use.
+
+    Shared clusters: high values (e.g. 48 on superh200) multiply CPU and I/O load per job; forked workers can
+    saturate disk and starve the GPU. Prefer setting nnUNet_n_proc_DA explicitly. In containers, os.cpu_count()
+    may exceed your SLURM CPU allocation — workers are still capped by that min().
     """
 
     if 'nnUNet_n_proc_DA' in os.environ.keys():

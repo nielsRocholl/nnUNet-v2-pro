@@ -54,6 +54,8 @@ def run_single_patch_forward(
     debug_patch_spacing_zyx: Optional[Tuple[float, float, float]],
     debug_native_geometry: Optional[Dict[str, Any]],
     save_debug_patch_prompts: bool,
+    border_expand: bool = False,
+    max_border_expand_extra: int = 16,
 ) -> torch.Tensor:
     shape = tuple(data.shape[1:])
     points_zyx = points_to_centers_zyx(
@@ -74,6 +76,8 @@ def run_single_patch_forward(
         debug_patch_spacing_zyx=debug_patch_spacing_zyx,
         save_debug_patch_prompts=save_debug_patch_prompts,
         debug_native_geometry=debug_native_geometry,
+        border_expand=border_expand,
+        max_border_expand_extra=max_border_expand_extra,
     )
 
 
@@ -260,6 +264,8 @@ class WarmSinglePatchSession:
         save_debug_patch_prompts: bool = False,
         case_id: Optional[Tuple[str, ...]] = None,
         wait_timeout: Optional[float] = None,
+        border_expand: bool = False,
+        max_border_expand_extra: int = 16,
     ) -> Optional[str]:
         if self.pred is None or self.cfg is None:
             raise RuntimeError("call initialize() first")
@@ -317,6 +323,8 @@ class WarmSinglePatchSession:
             debug_sp,
             debug_geom,
             save_debug_patch_prompts,
+            border_expand=border_expand,
+            max_border_expand_extra=max_border_expand_extra,
         )
 
         if export and ofile:

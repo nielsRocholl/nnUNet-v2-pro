@@ -150,17 +150,17 @@ nnUNetv2_predict_roi -i INPUT_FOLDER -o OUTPUT_FOLDER -m MODEL_FOLDER \
 
 ### CLI: nnUNetv2_predict_single_patch
 
-Full-case preprocessing and export match `nnUNetv2_predict_roi`, but the **core** inference differs: there is **no** dilated-bbox sliding window—always **exactly one** network tile centered on the given point. By default both prompt channels in that tile are **zero** (training mode `pos_no_prompt`). With **`--encode_prompt`**, the point is encoded in-patch using the same heatmap machinery as ROI `per_point_patch` (`prompt.point_radius_vox`, `prompt.encoding`, `prompt.prompt_intensity_scale` in `nnunet_pro_config.json`). Requires **exactly one** point in the chosen point payload (file, inline JSON, or `--point_zyx`).
+Full-case preprocessing and export match `nnUNetv2_predict_roi`, but the **core** inference is single-tile around the click: **no** dilated-bbox sliding window. **By default** exactly **one** network tile is centered on the given point, and both prompt channels in that tile are **zero** (training mode `pos_no_prompt`). With **`--encode_prompt`**, the point is encoded in-patch using the same heatmap machinery as ROI `per_point_patch` (`prompt.point_radius_vox`, `prompt.encoding`, `prompt.prompt_intensity_scale` in `nnunet_pro_config.json`). With **`--border_expand`**, after the seed tile the run **iteratively** plans and runs extra tiles: each tile’s prediction is scanned for foreground on the patch hull; **every** hull face with contact in a perimeter connected component can propose a neighbor tile (not only one “dominant” face). New tiles are queued (BFS) until no candidates remain or **`--border_expand_max_extra`** is reached; logits are **merged** with Gaussian weights into one full-volume field before export. Flat cutoffs can still appear if the cap is too low for very large lesions. Requires **exactly one** point in the chosen point payload (file, inline JSON, or `--point_zyx`).
 
 ```bash
 nnUNetv2_predict_single_patch -i INPUT_FOLDER -o OUTPUT_FOLDER -m MODEL_FOLDER \
-  --points_json points.json [--config CONFIG] [--points_space voxel|world] [--encode_prompt]
+  --points_json points.json [--config CONFIG] [--points_space voxel|world] [--encode_prompt] [--border_expand]
 ```
 
 | Argument | Required | Description |
 |----------|----------|-------------|
 | `-i` | Yes | Input folder or file (same channel layout as training) |
-| `-o` | Yes | Output folder (full-volume segmentation in original space; only the patch region is informed) |
+| `-o` | Yes | Output folder (full-volume segmentation in original space; one tile by default, or merged coverage when `--border_expand`) |
 | `-m` | Yes | Model folder (nnUNetTrainerPromptAware) |
 | `--points_json` | Yes* | Path to JSON with **exactly one** point, or `-` for stdin (*or use `--points_inline` / `--point_zyx`, or `--stdin_loop` for per-line stdin) |
 | `--config` | No | Default: `{model_folder}/nnunet_pro_config.json` (TTA default and `prompt.*` when `--encode_prompt`) |
@@ -171,7 +171,9 @@ nnUNetv2_predict_single_patch -i INPUT_FOLDER -o OUTPUT_FOLDER -m MODEL_FOLDER \
 | `-f` | No | Folds (default: 0) |
 | `-chk` | No | Checkpoint name |
 | `-device` | No | `cuda`, `cpu`, or `mps` |
-| `--save_debug_patch` | No | Directory or `*.nii.gz` stem: writes `*_preprocessed.nii.gz` and `*_viewer.nii.gz` (optional `--save_debug_patch_prompts`). When `data_properties` includes `sitk_stuff`, these are written with **SimpleITK** using the same geometry pipeline as full-volume export (`convert_preprocessed_to_original_space` + crop), so viewer orientation matches the source scan; otherwise a diagonal-affine nibabel fallback is used. |
+| `--border_expand` | No | If set, iterative border expansion: multi-face hull planning + BFS queue until empty or cap; merge with Gaussian weighting. |
+| `--border_expand_max_extra` | No | Max **additional** tiles per fold after the seed when `--border_expand` (default: 16). |
+| `--save_debug_patch` | No | Directory or `*.nii.gz` stem: writes `*_preprocessed.nii.gz` and `*_viewer.nii.gz` (optional `--save_debug_patch_prompts`). When `data_properties` includes `sitk_stuff`, these are written with **SimpleITK** using the same geometry pipeline as full-volume export (`convert_preprocessed_to_original_space` + crop), so viewer orientation matches the source scan; otherwise a diagonal-affine nibabel fallback is used. Debug patch dumps reflect the **seed** tile only. |
 
 **Point source (choose one):** `--points_json PATH` (or `-` to read one JSON object from stdin), `--points_inline '{...}'`, or `--point_zyx z,y,x`. For a long-lived subprocess with one preprocessed file and many clicks, `--stdin_loop` reads **one points JSON per line** from stdin after preprocessing (do not combine with `--points_json -`).
 

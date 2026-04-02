@@ -1,6 +1,9 @@
 #!/bin/bash
 # Train Dataset999 with vanilla nnUNet (nnUNetTrainer + ResEnc L plans).
 # Uses same preprocessed data as prompt-aware; no custom prompt code.
+#
+# nnUNet_n_proc_DA: augmenter worker processes per GPU — lower on shared / I/O-saturated nodes.
+# See documentation/pro/cluster_training_runbook.md
 #SBATCH --qos=vram
 #SBATCH --nodelist=dlc-slowpoke
 #SBATCH --ntasks=1
