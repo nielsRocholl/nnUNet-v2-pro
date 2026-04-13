@@ -12,6 +12,7 @@ from batchgenerators.utilities.file_and_folder_operations import load_json, mayb
 
 from nnunetv2.configuration import default_num_processes
 from nnunetv2.inference.export_prediction import convert_preprocessed_to_original_space
+from nnunetv2.utilities.inference_execution import inference_accumulator_dtype
 from nnunetv2.inference.predict_from_raw_data import nnUNetPredictor
 from nnunetv2.inference.sliding_window_prediction import compute_gaussian, compute_steps_for_sliding_window
 from nnunetv2.utilities.helpers import empty_cache
@@ -194,20 +195,33 @@ def local_prompt_points_for_patch(
     return [(patch_size[0] // 2, patch_size[1] // 2, patch_size[2] // 2)]
 
 
+def _maybe_to_device(t: torch.Tensor, device: torch.device) -> torch.Tensor:
+    return t if t.device == device else t.to(device)
+
+
+@torch.inference_mode()
+def _patch_fg_tensor_from_logits(patch_logits: torch.Tensor, label_manager) -> torch.Tensor:
+    """Foreground bool (D,H,W) on same device as logits; avoids moving full C×D×H×W logits to CPU."""
+    x = patch_logits.float()
+    if label_manager.has_regions:
+        probs = label_manager.apply_inference_nonlin(x)
+        seg = torch.zeros(probs.shape[1:], dtype=torch.int16, device=patch_logits.device)
+        for i, c in enumerate(label_manager.regions_class_order):
+            seg[probs[i] > 0.5] = c
+        return seg > 0
+    seg = x.argmax(0)
+    fg = torch.zeros_like(seg, dtype=torch.bool)
+    for fl in label_manager.foreground_labels:
+        fg |= seg == int(fl)
+    return fg
+
+
 def touching_patch_faces_from_logits(
     patch_logits: torch.Tensor,
     label_manager,
 ) -> List[Tuple[int, bool]]:
     """Return list of (axis, is_low_face) for patch faces touched by foreground."""
-    seg = label_manager.convert_logits_to_segmentation(patch_logits.float().cpu())
-    if isinstance(seg, torch.Tensor):
-        seg = seg.numpy()
-    fg = np.zeros(seg.shape, dtype=bool)
-    if label_manager.has_regions:
-        fg = seg > 0
-    else:
-        for fl in label_manager.foreground_labels:
-            fg |= seg == fl
+    fg = _patch_fg_bool_from_logits(patch_logits, label_manager)
     if not fg.any():
         return []
     dz, dy, dx = fg.shape
@@ -228,16 +242,7 @@ def touching_patch_faces_from_logits(
 
 
 def _patch_fg_bool_from_logits(patch_logits: torch.Tensor, label_manager) -> np.ndarray:
-    seg = label_manager.convert_logits_to_segmentation(patch_logits.float().cpu())
-    if isinstance(seg, torch.Tensor):
-        seg = seg.numpy()
-    fg = np.zeros(seg.shape, dtype=bool)
-    if label_manager.has_regions:
-        fg = seg > 0
-    else:
-        for fl in label_manager.foreground_labels:
-            fg |= seg == fl
-    return fg
+    return _patch_fg_tensor_from_logits(patch_logits, label_manager).cpu().numpy()
 
 
 def plan_border_expansion_centers_from_fg(
@@ -727,6 +732,36 @@ class nnUNetROIPredictor(nnUNetPredictor):
         torch.set_num_threads(n_threads)
         return prediction
 
+    def _fill_single_patch_workon(
+        self,
+        workon: torch.Tensor,
+        data_padded: torch.Tensor,
+        sz: slice,
+        sy: slice,
+        sx: slice,
+        n_img_ch: int,
+        encode_prompt: bool,
+        seed_pad: Tuple[int, int, int],
+        prompt_cfg,
+        patch_size: Tuple[int, int, int],
+    ) -> None:
+        sl_img = (slice(None), sz, sy, sx)
+        workon[0, :n_img_ch].copy_(data_padded[sl_img])
+        if encode_prompt:
+            loc = local_prompt_points_for_patch(seed_pad, sz, sy, sx, patch_size)
+            pr = encode_points_to_heatmap_pair(
+                loc,
+                [],
+                patch_size,
+                prompt_cfg.point_radius_vox,
+                prompt_cfg.encoding,
+                device=self.device,
+                intensity_scale=prompt_cfg.prompt_intensity_scale,
+            )
+            workon[0, n_img_ch:].copy_(pr.float())
+        else:
+            workon[0, n_img_ch:].zero_()
+
     def _predict_logits_single_patch_single_fold(
         self,
         data: torch.Tensor,
@@ -759,10 +794,7 @@ class nnUNetROIPredictor(nnUNetPredictor):
         results_device = (
             self.device if self.perform_everything_on_device and self.device.type != "cpu" else torch.device("cpu")
         )
-        predicted_logits = torch.zeros(
-            (num_heads, *padded_shape), dtype=torch.float32, device=results_device
-        )
-        n_predictions = torch.zeros(padded_shape, dtype=torch.float32, device=results_device)
+        acc_dtype = inference_accumulator_dtype(results_device)
         if self.use_gaussian:
             gaussian = compute_gaussian(
                 tuple(patch_size),
@@ -773,30 +805,30 @@ class nnUNetROIPredictor(nnUNetPredictor):
             )
         else:
             gaussian = torch.ones(patch_size, dtype=torch.float32, device=results_device)
+        gaussian_acc = gaussian.to(dtype=acc_dtype)
 
         points_pad = map_points_zyx_unpadded_to_padded(points_zyx, slicer_revert)
         pz, py, px = points_pad[0]
         seed_pad: Tuple[int, int, int] = (pz, py, px)
         sz, sy, sx = centered_spatial_slices_at_point(pz, py, px, patch_size, padded_shape)
-        bg_vec = background_logits_vector(self.label_manager, num_heads, results_device)
+        bg_vec = background_logits_vector(self.label_manager, num_heads, results_device, dtype=acc_dtype)
+
+        n_img_ch = int(data_padded.shape[0])
+        workon = torch.empty((1, n_img_ch + 2, *patch_size), device=self.device, dtype=torch.float32)
 
         try:
-            sl = (slice(None), sz, sy, sx)
-            img_crop = data_padded[sl].clone().unsqueeze(0)
-            if encode_prompt:
-                local_pts = local_prompt_points_for_patch(seed_pad, sz, sy, sx, patch_size)
-                prompt = encode_points_to_heatmap_pair(
-                    local_pts,
-                    [],
-                    patch_size,
-                    prompt_cfg.point_radius_vox,
-                    prompt_cfg.encoding,
-                    device=self.device,
-                    intensity_scale=prompt_cfg.prompt_intensity_scale,
-                ).to(dtype=img_crop.dtype)
-            else:
-                prompt = torch.zeros(2, *patch_size, dtype=img_crop.dtype, device=self.device)
-            workon = torch.cat([img_crop[0], prompt], dim=0).unsqueeze(0).contiguous()
+            self._fill_single_patch_workon(
+                workon,
+                data_padded,
+                sz,
+                sy,
+                sx,
+                n_img_ch,
+                encode_prompt,
+                seed_pad,
+                prompt_cfg,
+                patch_size,
+            )
             if save_debug_patch:
                 sp = debug_patch_spacing_zyx if debug_patch_spacing_zyx is not None else (1.0, 1.0, 1.0)
                 ng = None
@@ -810,17 +842,30 @@ class nnUNetROIPredictor(nnUNetPredictor):
                         "slicer_revert": slicer_revert,
                     }
                 save_single_patch_debug_niftis(
-                    img_crop[0],
-                    prompt,
+                    workon[0, :n_img_ch].clone(),
+                    workon[0, n_img_ch:].clone(),
                     save_debug_patch,
                     sp,
                     save_prompt_channels=save_debug_patch_prompts,
                     native_geometry=ng,
                 )
-            pred_raw = self._internal_maybe_mirror_and_predict(workon)[0].to(results_device)
-            pred = pred_raw * gaussian if self.use_gaussian else pred_raw
-            predicted_logits[(slice(None), sz, sy, sx)] += pred
-            n_predictions[sz, sy, sx] += gaussian
+            pred_raw = _maybe_to_device(self._internal_maybe_mirror_and_predict(workon)[0], results_device)
+
+            if not border_expand:
+                merged = pred_raw.to(dtype=acc_dtype)
+                bg_plane = bg_vec.view(-1, 1, 1, 1).to(dtype=acc_dtype)
+                predicted_logits = bg_plane.expand(num_heads, *padded_shape).clone()
+                predicted_logits[:, sz, sy, sx] = merged
+                predicted_logits = predicted_logits[(slice(None), *slicer_revert[1:])]
+                if torch.any(torch.isinf(predicted_logits)):
+                    raise RuntimeError("Encountered inf in predicted array. Aborting.")
+                return predicted_logits.float().cpu()
+
+            predicted_logits = torch.zeros((num_heads, *padded_shape), dtype=acc_dtype, device=results_device)
+            n_predictions = torch.zeros(padded_shape, dtype=acc_dtype, device=results_device)
+            pred_acc = (pred_raw * gaussian if self.use_gaussian else pred_raw).to(dtype=acc_dtype)
+            predicted_logits[(slice(None), sz, sy, sx)] += pred_acc
+            n_predictions[sz, sy, sx] += gaussian_acc
 
             seed_key = spatial_slices_to_tuple(sz, sy, sx)
             bfcb = getattr(self, "_border_tile_progress_cb", None)
@@ -828,74 +873,68 @@ class nnUNetROIPredictor(nnUNetPredictor):
             if report_border_tile_progress and border_expand and bfcb is not None:
                 bfcb(1, total_bt)
 
-            if border_expand:
-                visited_keys: Set[Tuple[int, int, int, int, int, int]] = {seed_key}
-                q: deque = deque(
-                    plan_border_expansion_centers_from_logits(
-                        pred_raw,
+            visited_keys: Set[Tuple[int, int, int, int, int, int]] = {seed_key}
+            q: deque = deque(
+                plan_border_expansion_centers_from_logits(
+                    pred_raw,
+                    self.label_manager,
+                    sz,
+                    sy,
+                    sx,
+                    patch_size,
+                    padded_shape,
+                    seed_key,
+                    max_border_expand_extra,
+                    skip_keys=visited_keys,
+                )
+            )
+            tiles_done = 0
+            # Batched forwards for queued tiles would require isolating mirroring TTA per batch element; not implemented.
+            while q and tiles_done < max_border_expand_extra:
+                pz_e, py_e, px_e = q.popleft()
+                sz_e, sy_e, sx_e = centered_spatial_slices_at_point(
+                    pz_e, py_e, px_e, patch_size, padded_shape
+                )
+                k_e = spatial_slices_to_tuple(sz_e, sy_e, sx_e)
+                if k_e in visited_keys:
+                    continue
+                visited_keys.add(k_e)
+                self._fill_single_patch_workon(
+                    workon,
+                    data_padded,
+                    sz_e,
+                    sy_e,
+                    sx_e,
+                    n_img_ch,
+                    encode_prompt,
+                    seed_pad,
+                    prompt_cfg,
+                    patch_size,
+                )
+                raw_e = _maybe_to_device(self._internal_maybe_mirror_and_predict(workon)[0], results_device)
+                pred_e = (raw_e * gaussian if self.use_gaussian else raw_e).to(dtype=acc_dtype)
+                predicted_logits[(slice(None), sz_e, sy_e, sx_e)] += pred_e
+                n_predictions[sz_e, sy_e, sx_e] += gaussian_acc
+                tiles_done += 1
+                if report_border_tile_progress and bfcb is not None:
+                    bfcb(1 + tiles_done, total_bt)
+                budget = max_border_expand_extra - tiles_done
+                if budget > 0:
+                    for c in plan_border_expansion_centers_from_logits(
+                        raw_e,
                         self.label_manager,
-                        sz,
-                        sy,
-                        sx,
+                        sz_e,
+                        sy_e,
+                        sx_e,
                         patch_size,
                         padded_shape,
                         seed_key,
-                        max_border_expand_extra,
+                        budget,
                         skip_keys=visited_keys,
-                    )
-                )
-                tiles_done = 0
-                while q and tiles_done < max_border_expand_extra:
-                    pz_e, py_e, px_e = q.popleft()
-                    sz_e, sy_e, sx_e = centered_spatial_slices_at_point(
-                        pz_e, py_e, px_e, patch_size, padded_shape
-                    )
-                    k_e = spatial_slices_to_tuple(sz_e, sy_e, sx_e)
-                    if k_e in visited_keys:
-                        continue
-                    visited_keys.add(k_e)
-                    sl_e = (slice(None), sz_e, sy_e, sx_e)
-                    img_e = data_padded[sl_e].clone().unsqueeze(0)
-                    if encode_prompt:
-                        loc_e = local_prompt_points_for_patch(
-                            seed_pad, sz_e, sy_e, sx_e, patch_size
-                        )
-                        pr_e = encode_points_to_heatmap_pair(
-                            loc_e,
-                            [],
-                            patch_size,
-                            prompt_cfg.point_radius_vox,
-                            prompt_cfg.encoding,
-                            device=self.device,
-                            intensity_scale=prompt_cfg.prompt_intensity_scale,
-                        ).to(dtype=img_e.dtype)
-                    else:
-                        pr_e = torch.zeros(2, *patch_size, dtype=img_e.dtype, device=self.device)
-                    work_e = torch.cat([img_e[0], pr_e], dim=0).unsqueeze(0).contiguous()
-                    raw_e = self._internal_maybe_mirror_and_predict(work_e)[0].to(results_device)
-                    pred_e = raw_e * gaussian if self.use_gaussian else raw_e
-                    predicted_logits[sl_e] += pred_e
-                    n_predictions[sz_e, sy_e, sx_e] += gaussian
-                    tiles_done += 1
-                    if report_border_tile_progress and bfcb is not None:
-                        bfcb(1 + tiles_done, total_bt)
-                    budget = max_border_expand_extra - tiles_done
-                    if budget > 0:
-                        for c in plan_border_expansion_centers_from_logits(
-                            raw_e,
-                            self.label_manager,
-                            sz_e,
-                            sy_e,
-                            sx_e,
-                            patch_size,
-                            padded_shape,
-                            seed_key,
-                            budget,
-                            skip_keys=visited_keys,
-                        ):
-                            q.append(c)
-                if self.verbose and tiles_done:
-                    print(f"[single_patch] border_expand: {tiles_done} extra tile(s)", flush=True)
+                    ):
+                        q.append(c)
+            if self.verbose and tiles_done:
+                print(f"[single_patch] border_expand: {tiles_done} extra tile(s)", flush=True)
 
             safe_divide_merged_logits(predicted_logits, n_predictions, bg_vec)
             predicted_logits = predicted_logits[(slice(None), *slicer_revert[1:])]

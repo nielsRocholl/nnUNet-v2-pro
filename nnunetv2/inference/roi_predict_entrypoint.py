@@ -16,6 +16,7 @@ from nnunetv2.inference.export_prediction import (
 )
 from nnunetv2.inference.roi_predictor import nnUNetROIPredictor, parse_points_json
 from nnunetv2.utilities.cli_display import InferenceDisplay
+from nnunetv2.utilities.inference_execution import apply_inference_execution_env
 from nnunetv2.utilities.roi_config import load_config
 from nnunetv2.utilities.roi_coordinate_validation import validate_and_convert_points
 from nnunetv2.utilities.roi_geometry import points_to_centers_zyx
@@ -100,6 +101,7 @@ def predict_roi_entry_point():
         allow_tqdm=True,
     )
     pred.initialize_from_trained_model_folder(args.m, args.f, args.chk)
+    apply_inference_execution_env(device)
     save_json(pred.dataset_json, join(args.o, "dataset.json"), sort_keys=False)
     save_json(pred.plans_manager.plans, join(args.o, "plans.json"), sort_keys=False)
 
