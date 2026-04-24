@@ -75,13 +75,13 @@ def test_round_trip_zyx_world():
 
 
 @pytest.mark.slow
-def test_roi_inference_all_formats():
-    """Integration: ROI inference with each format on Dataset010 or Dataset010_CECT."""
+def test_single_patch_inference_all_formats():
+    """Integration: single-patch inference with each voxel point format on Dataset010 or Dataset010_CECT."""
     import sys
 
     from batchgenerators.utilities.file_and_folder_operations import join, load_json
 
-    from nnunetv2.inference.roi_predict_entrypoint import predict_roi_entry_point
+    from nnunetv2.inference.single_patch_predict_entrypoint import predict_single_patch_entry_point
     from nnunetv2.utilities.file_path_utilities import get_output_folder
     from nnunetv2.utilities.utils import get_identifiers_from_splitted_dataset_folder
 
@@ -128,7 +128,7 @@ def test_roi_inference_all_formats():
                 os.makedirs(out_dir, exist_ok=True)
                 old_argv = sys.argv
                 sys.argv = [
-                    "nnUNetv2_predict_roi",
+                    "nnUNetv2_predict_single_patch",
                     "-i", images_dir,
                     "-o", out_dir,
                     "-m", model_folder,
@@ -137,7 +137,7 @@ def test_roi_inference_all_formats():
                     "-f", "0", "-device", "cpu", "-npp", "1", "-nps", "1",
                 ]
                 try:
-                    predict_roi_entry_point()
+                    predict_single_patch_entry_point()
                 finally:
                     sys.argv = old_argv
                 file_ending = dataset_json["file_ending"]

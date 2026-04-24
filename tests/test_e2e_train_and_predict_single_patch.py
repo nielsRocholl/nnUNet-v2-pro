@@ -1,4 +1,4 @@
-"""E2E: train (overfit) + ROI predict on Dataset010. Slow — run manually with pytest -m e2e."""
+"""E2E: train (overfit) + single-patch predict on Dataset010. Slow — run manually with pytest -m e2e."""
 import json
 import os
 import sys
@@ -30,8 +30,8 @@ RAW_IMAGES = join(os.environ.get("nnUNet_raw", join(DUMMY_BASE, "nnUNet_raw")), 
 
 @pytest.mark.e2e
 @pytest.mark.slow
-def test_e2e_train_overfit_and_roi_predict():
-    """Full pipeline: train 3 epochs (overfit) on 1 sample, then ROI predict."""
+def test_e2e_train_overfit_and_single_patch_predict():
+    """Full pipeline: train 3 epochs (overfit) on 1 sample, then single-patch predict."""
     if not os.path.isdir(PREPROCESSED_DIR_FULLRES):
         pytest.skip("Dataset010 fullres not found")
     try:
@@ -76,7 +76,7 @@ def test_e2e_train_overfit_and_roi_predict():
     model_folder = get_output_folder(
         "Dataset010", "nnUNetTrainerPromptAware", "nnUNetPlans", "3d_fullres", fold=None
     )
-    out_dir = join(os.environ["nnUNet_raw"], "Dataset010", "predictions_roi_e2e")
+    out_dir = join(os.environ["nnUNet_raw"], "Dataset010", "predictions_single_patch_e2e")
     maybe_mkdir_p(out_dir)
     points_path = join(out_dir, "points.json")
     with open(points_path, "w") as f:
@@ -87,7 +87,7 @@ def test_e2e_train_overfit_and_roi_predict():
 
     old_argv = sys.argv
     sys.argv = [
-        "nnUNetv2_predict_roi",
+        "nnUNetv2_predict_single_patch",
         "-i", RAW_IMAGES,
         "-o", out_dir,
         "-m", model_folder,
@@ -99,8 +99,9 @@ def test_e2e_train_overfit_and_roi_predict():
         "-nps", "1",
     ]
     try:
-        from nnunetv2.inference.roi_predict_entrypoint import predict_roi_entry_point
-        predict_roi_entry_point()
+        from nnunetv2.inference.single_patch_predict_entrypoint import predict_single_patch_entry_point
+
+        predict_single_patch_entry_point()
     finally:
         sys.argv = old_argv
 

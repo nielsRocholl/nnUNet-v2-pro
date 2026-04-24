@@ -1,5 +1,6 @@
-"""ROI-only inference: prompt-aware local sliding windows, no full-volume sliding."""
+"""Prompt-aware single-patch inference: no full-volume sliding window on the predictor."""
 import os
+import warnings
 from collections import deque
 from typing import Any, Dict, List, Optional, Set, Tuple
 
@@ -14,77 +15,12 @@ from nnunetv2.configuration import default_num_processes
 from nnunetv2.inference.export_prediction import convert_preprocessed_to_original_space
 from nnunetv2.utilities.inference_execution import inference_accumulator_dtype
 from nnunetv2.inference.predict_from_raw_data import nnUNetPredictor
-from nnunetv2.inference.sliding_window_prediction import compute_gaussian, compute_steps_for_sliding_window
+from nnunetv2.inference.sliding_window_prediction import compute_gaussian
 from nnunetv2.utilities.helpers import empty_cache
 from nnunetv2.utilities.plans_handling.plans_handler import ConfigurationManager, PlansManager
+from nnunetv2.inference.prompt_clustering import cluster_centroid_zyx
 from nnunetv2.utilities.prompt_encoding import encode_points_to_heatmap_pair
 from nnunetv2.utilities.roi_config import RoiPromptConfig
-
-
-def get_prompt_aware_slicers(
-    image_size: Tuple[int, ...],
-    patch_size: Tuple[int, int, int],
-    tile_step_size: float,
-    dense_prompt: Optional[torch.Tensor] = None,
-) -> List[Tuple]:
-    """Slicers for prompt-aware sliding: dilated bbox (prompt + patch_size/2, clamped).
-    Single patch if dilated bbox < patch; else filter sliding windows.
-    Empty prompt → 1 centered patch."""
-    if len(patch_size) < len(image_size):
-        raise NotImplementedError("ROI predictor supports 3D only")
-    slicers = []
-    if dense_prompt is None or dense_prompt.numel() == 0 or dense_prompt.max().item() <= 0:
-        center = [image_size[i] // 2 for i in range(3)]
-        start = [max(0, center[i] - patch_size[i] // 2) for i in range(3)]
-        end = [min(image_size[i], start[i] + patch_size[i]) for i in range(3)]
-        for i in range(3):
-            if end[i] - start[i] < patch_size[i]:
-                if end[i] == image_size[i]:
-                    start[i] = max(0, end[i] - patch_size[i])
-                else:
-                    end[i] = min(image_size[i], start[i] + patch_size[i])
-        slicers.append(tuple([slice(None)] + [slice(start[i], end[i]) for i in range(3)]))
-        return slicers
-    prompt_coords = torch.where(dense_prompt[0] > 0)
-    if len(prompt_coords[0]) == 0:
-        center = [image_size[i] // 2 for i in range(3)]
-        start = [max(0, center[i] - patch_size[i] // 2) for i in range(3)]
-        end = [min(image_size[i], start[i] + patch_size[i]) for i in range(3)]
-        slicers.append(tuple([slice(None)] + [slice(start[i], end[i]) for i in range(3)]))
-        return slicers
-    prompt_min = [int(prompt_coords[i].min().item()) for i in range(3)]
-    prompt_max = [int(prompt_coords[i].max().item()) for i in range(3)]
-    half = [patch_size[i] // 2 for i in range(3)]
-    d_min = [max(0, prompt_min[i] - half[i]) for i in range(3)]
-    d_max = [min(image_size[i], prompt_max[i] + half[i]) for i in range(3)]
-    dilated_extent = [d_max[i] - d_min[i] for i in range(3)]
-    if all(dilated_extent[i] < patch_size[i] for i in range(3)):
-        center = [(d_min[i] + d_max[i]) // 2 for i in range(3)]
-        start = [max(0, center[i] - patch_size[i] // 2) for i in range(3)]
-        end = [min(image_size[i], start[i] + patch_size[i]) for i in range(3)]
-        for i in range(3):
-            if end[i] - start[i] < patch_size[i]:
-                if end[i] == image_size[i]:
-                    start[i] = max(0, end[i] - patch_size[i])
-                else:
-                    end[i] = min(image_size[i], start[i] + patch_size[i])
-        slicers.append(tuple([slice(None)] + [slice(start[i], end[i]) for i in range(3)]))
-        return slicers
-    steps = compute_steps_for_sliding_window(image_size, patch_size, tile_step_size)
-    for sx in steps[0]:
-        for sy in steps[1]:
-            for sz in steps[2]:
-                slc = tuple([
-                    slice(None),
-                    *[slice(si, si + ti) for si, ti in zip((sx, sy, sz), patch_size)],
-                ])
-                if (
-                    d_min[0] < slc[1].stop and d_max[0] > slc[1].start
-                    and d_min[1] < slc[2].stop and d_max[1] > slc[2].start
-                    and d_min[2] < slc[3].stop and d_max[2] > slc[3].start
-                ):
-                    slicers.append(slc)
-    return slicers
 
 
 def points_dict_to_canonical(
@@ -193,6 +129,19 @@ def local_prompt_points_for_patch(
     if sz.start <= pz < sz.stop and sy.start <= py < sy.stop and sx.start <= px < sx.stop:
         return [(pz - sz.start, py - sy.start, px - sx.start)]
     return [(patch_size[0] // 2, patch_size[1] // 2, patch_size[2] // 2)]
+
+
+def local_points_padded_in_tile(
+    points_padded: List[Tuple[int, int, int]],
+    sz: slice,
+    sy: slice,
+    sx: slice,
+) -> List[Tuple[int, int, int]]:
+    o: List[Tuple[int, int, int]] = []
+    for pz, py, px in points_padded:
+        if sz.start <= pz < sz.stop and sy.start <= py < sy.stop and sx.start <= px < sx.stop:
+            o.append((pz - sz.start, py - sy.start, px - sx.start))
+    return o
 
 
 def _maybe_to_device(t: torch.Tensor, device: torch.device) -> torch.Tensor:
@@ -640,49 +589,7 @@ def save_single_patch_debug_niftis(
 
 
 class nnUNetROIPredictor(nnUNetPredictor):
-    """ROI-only inference: never runs full-volume sliding."""
-
-    @torch.inference_mode()
-    def predict_logits_roi_mode(
-        self,
-        data: torch.Tensor,
-        points_zyx: List[Tuple[int, int, int]],
-        properties: dict,
-        cfg: RoiPromptConfig,
-        tile_step_size: Optional[float] = None,
-    ) -> torch.Tensor:
-        """Predict logits: dilated bbox sliding or per-point expanding patches."""
-        from torch._dynamo import OptimizedModule
-
-        tile_step_size = tile_step_size if tile_step_size is not None else self.tile_step_size
-        n_threads = torch.get_num_threads()
-        torch.set_num_threads(default_num_processes if default_num_processes < n_threads else n_threads)
-        self._roi_patch_visits_capped = False
-        prediction = None
-        for params in self.list_of_parameters:
-            if not isinstance(self.network, OptimizedModule):
-                self.network.load_state_dict(params)
-            else:
-                self.network._orig_mod.load_state_dict(params)
-            if cfg.inference.roi_inference_mode == "per_point_patch":
-                fold_logits = self._predict_logits_roi_per_point_patch_single_fold(data, points_zyx, cfg)
-            else:
-                fold_logits = self._predict_logits_roi_single_fold(
-                    data, points_zyx, cfg, tile_step_size
-                )
-            if prediction is None:
-                prediction = fold_logits
-            else:
-                prediction = prediction + fold_logits
-        if len(self.list_of_parameters) > 1:
-            prediction = prediction / len(self.list_of_parameters)
-        torch.set_num_threads(n_threads)
-        if getattr(self, "_roi_patch_visits_capped", False) and self.verbose:
-            print(
-                "[nnUNetROI] max_patch_expansion_visits reached; expansion stopped early for this case.",
-                flush=True,
-            )
-        return prediction
+    """Prompt-aware inference: use predict_logits_single_patch, not full-volume sliding."""
 
     @torch.inference_mode()
     def predict_logits_single_patch(
@@ -732,7 +639,276 @@ class nnUNetROIPredictor(nnUNetPredictor):
         torch.set_num_threads(n_threads)
         return prediction
 
-    def _fill_single_patch_workon(
+    @torch.inference_mode()
+    def predict_logits_from_prompt_clusters(
+        self,
+        data: torch.Tensor,
+        clusters: List[List[Tuple[int, int, int]]],
+        cfg: RoiPromptConfig,
+        *,
+        encode_prompt: bool = True,
+        encode_per_cluster: Optional[List[bool]] = None,
+        save_debug_patch: Optional[str] = None,
+        debug_patch_spacing_zyx: Optional[Tuple[float, float, float]] = None,
+        save_debug_patch_prompts: bool = False,
+        debug_native_geometry: Optional[Dict[str, Any]] = None,
+        border_expand: bool = False,
+        max_border_expand_extra: int = 16,
+        cross_cluster_neg: bool = False,
+    ) -> torch.Tensor:
+        """Multi-cluster adaptive tiling: points are pre-z-clustered in preprocessed (unpadded) zyx. One seed+BFS per cluster, merged with Gaussian weights."""
+        from torch._dynamo import OptimizedModule
+
+        if not clusters or any(len(c) == 0 for c in clusters):
+            raise ValueError("predict_logits_from_prompt_clusters requires non-empty clusters with at least one point each")
+        if encode_per_cluster is not None and len(encode_per_cluster) != len(clusters):
+            raise ValueError("encode_per_cluster length must match number of clusters")
+        if cross_cluster_neg and encode_per_cluster is not None and not all(encode_per_cluster):
+            raise ValueError("cross_cluster_neg requires prompt encoding on every cluster; gate left some clusters probe-only")
+        n_threads = torch.get_num_threads()
+        torch.set_num_threads(default_num_processes if default_num_processes < n_threads else n_threads)
+        prediction = None
+        for fi, params in enumerate(self.list_of_parameters):
+            if not isinstance(self.network, OptimizedModule):
+                self.network.load_state_dict(params)
+            else:
+                self.network._orig_mod.load_state_dict(params)
+            fold_logits = self._predict_logits_multi_cluster_single_fold(
+                data,
+                clusters,
+                cfg,
+                encode_prompt,
+                encode_per_cluster=encode_per_cluster,
+                save_debug_patch=save_debug_patch if fi == 0 else None,
+                debug_patch_spacing_zyx=debug_patch_spacing_zyx,
+                save_debug_patch_prompts=save_debug_patch_prompts,
+                debug_native_geometry=debug_native_geometry if fi == 0 else None,
+                border_expand=border_expand,
+                max_border_expand_extra=max_border_expand_extra,
+                cross_cluster_neg=cross_cluster_neg,
+                report_border_tile_progress=(fi == 0),
+            )
+            if prediction is None:
+                prediction = fold_logits
+            else:
+                prediction = prediction + fold_logits
+        if len(self.list_of_parameters) > 1:
+            prediction = prediction / len(self.list_of_parameters)
+        torch.set_num_threads(n_threads)
+        return prediction
+
+    def _predict_logits_multi_cluster_single_fold(
+        self,
+        data: torch.Tensor,
+        clusters: List[List[Tuple[int, int, int]]],
+        cfg: RoiPromptConfig,
+        encode_prompt: bool,
+        encode_per_cluster: Optional[List[bool]] = None,
+        save_debug_patch: Optional[str] = None,
+        debug_patch_spacing_zyx: Optional[Tuple[float, float, float]] = None,
+        save_debug_patch_prompts: bool = False,
+        debug_native_geometry: Optional[Dict[str, Any]] = None,
+        border_expand: bool = False,
+        max_border_expand_extra: int = 16,
+        cross_cluster_neg: bool = False,
+        report_border_tile_progress: bool = True,
+    ) -> torch.Tensor:
+        self.network = self.network.to(self.device)
+        self.network.eval()
+        patch_size = tuple(self.configuration_manager.patch_size)
+        prompt_cfg = cfg.prompt
+        num_heads = self.label_manager.num_segmentation_heads
+        data_f = data.float()
+        data_padded, slicer_revert = pad_nd_image(
+            data_f, patch_size, "constant", {"value": 0}, True, None
+        )
+        padded_shape = tuple(data_padded.shape[1:])
+        data_padded = data_padded.to(self.device)
+        results_device = (
+            self.device if self.perform_everything_on_device and self.device.type != "cpu" else torch.device("cpu")
+        )
+        acc_dtype = inference_accumulator_dtype(results_device)
+        if self.use_gaussian:
+            gaussian = compute_gaussian(
+                tuple(patch_size),
+                sigma_scale=1.0 / 8,
+                value_scaling_factor=10,
+                dtype=torch.float32,
+                device=results_device,
+            )
+        else:
+            gaussian = torch.ones(patch_size, dtype=torch.float32, device=results_device)
+        gaussian_acc = gaussian.to(dtype=acc_dtype)
+        bg_vec = background_logits_vector(self.label_manager, num_heads, results_device, dtype=acc_dtype)
+
+        clusters_pad: List[List[Tuple[int, int, int]]] = [
+            map_points_zyx_unpadded_to_padded(pts, slicer_revert) for pts in clusters
+        ]
+        centroids_pad = [cluster_centroid_zyx(cp) for cp in clusters_pad]
+
+        n_img_ch = int(data_padded.shape[0])
+        workon = torch.empty((1, n_img_ch + 2, *patch_size), device=self.device, dtype=torch.float32)
+
+        global_forwarded: Set[Tuple[int, int, int, int, int, int]] = set()
+        first_tile_debug_done = False
+
+        def fill_tile(sz: slice, sy: slice, sx: slice, cl_idx: int) -> bool:
+            nonlocal first_tile_debug_done
+            k = spatial_slices_to_tuple(sz, sy, sx)
+            if k in global_forwarded:
+                warnings.warn(
+                    f"multi-prompt: skipping duplicate tile {k!r} (first forward kept)",
+                    UserWarning,
+                    stacklevel=3,
+                )
+                return False
+            global_forwarded.add(k)
+            ep = encode_prompt if encode_per_cluster is None else bool(encode_per_cluster[cl_idx])
+            pts = clusters_pad[cl_idx]
+            pos = local_points_padded_in_tile(pts, sz, sy, sx)
+            if cross_cluster_neg and ep:
+                others = [centroids_pad[i] for i in range(len(centroids_pad)) if i != cl_idx]
+                neg = local_points_padded_in_tile(others, sz, sy, sx)
+            else:
+                neg = []
+            self._fill_workon_patch(
+                workon, data_padded, sz, sy, sx, n_img_ch, ep, pos, neg, prompt_cfg, patch_size
+            )
+            if save_debug_patch and (not first_tile_debug_done):
+                sp = debug_patch_spacing_zyx if debug_patch_spacing_zyx is not None else (1.0, 1.0, 1.0)
+                ng = None
+                if debug_native_geometry is not None:
+                    ng = {
+                        **debug_native_geometry,
+                        "padded_shape": padded_shape,
+                        "sz": sz,
+                        "sy": sy,
+                        "sx": sx,
+                        "slicer_revert": slicer_revert,
+                    }
+                save_single_patch_debug_niftis(
+                    workon[0, :n_img_ch].clone(),
+                    workon[0, n_img_ch:].clone(),
+                    save_debug_patch,
+                    sp,
+                    save_prompt_channels=save_debug_patch_prompts,
+                    native_geometry=ng,
+                )
+                first_tile_debug_done = True
+            return True
+
+        try:
+            if not border_expand:
+                bg_plane = bg_vec.view(-1, 1, 1, 1).to(dtype=acc_dtype)
+                predicted_logits = bg_plane.expand(num_heads, *padded_shape).clone()
+                for cl_idx in range(len(clusters_pad)):
+                    cz, cy, cx = centroids_pad[cl_idx]
+                    sz, sy, sx = centered_spatial_slices_at_point(cz, cy, cx, patch_size, padded_shape)
+                    if not fill_tile(sz, sy, sx, cl_idx):
+                        if self.verbose:
+                            print(
+                                f"[from_prompts] cluster {cl_idx}: seed tile duplicate, skipped",
+                                flush=True,
+                            )
+                        continue
+                    pred_raw = _maybe_to_device(self._internal_maybe_mirror_and_predict(workon)[0], results_device)
+                    merged = pred_raw.to(dtype=acc_dtype)
+                    predicted_logits[(slice(None), sz, sy, sx)] = merged
+                predicted_logits = predicted_logits[(slice(None), *slicer_revert[1:])]
+                if torch.any(torch.isinf(predicted_logits)):
+                    raise RuntimeError("Encountered inf in predicted array. Aborting.")
+                return predicted_logits.float().cpu()
+
+            predicted_logits = torch.zeros((num_heads, *padded_shape), dtype=acc_dtype, device=results_device)
+            n_predictions = torch.zeros(padded_shape, dtype=acc_dtype, device=results_device)
+            bfcb = getattr(self, "_border_tile_progress_cb", None)
+            total_bt = 1 + max_border_expand_extra
+            tile_count = [0]
+
+            for cl_idx in range(len(clusters_pad)):
+                cz, cy, cx = centroids_pad[cl_idx]
+                sz, sy, sx = centered_spatial_slices_at_point(cz, cy, cx, patch_size, padded_shape)
+                if not fill_tile(sz, sy, sx, cl_idx):
+                    if self.verbose:
+                        print(
+                            f"[from_prompts] cluster {cl_idx}: seed tile duplicate, skipped",
+                            flush=True,
+                        )
+                    continue
+                pred_raw = _maybe_to_device(self._internal_maybe_mirror_and_predict(workon)[0], results_device)
+                acc = (pred_raw * gaussian if self.use_gaussian else pred_raw).to(dtype=acc_dtype)
+                predicted_logits[(slice(None), sz, sy, sx)] += acc
+                n_predictions[sz, sy, sx] += gaussian_acc
+                if report_border_tile_progress and bfcb is not None:
+                    tile_count[0] += 1
+                    bfcb(tile_count[0], total_bt * max(1, len(clusters_pad)))
+                seed_key = spatial_slices_to_tuple(sz, sy, sx)
+                visited_keys: Set[Tuple[int, int, int, int, int, int]] = {seed_key}
+                q: deque = deque(
+                    plan_border_expansion_centers_from_logits(
+                        pred_raw,
+                        self.label_manager,
+                        sz,
+                        sy,
+                        sx,
+                        patch_size,
+                        padded_shape,
+                        seed_key,
+                        max_border_expand_extra,
+                        skip_keys=visited_keys,
+                    )
+                )
+                tiles_done = 0
+                while q and tiles_done < max_border_expand_extra:
+                    pz_e, py_e, px_e = q.popleft()
+                    sz_e, sy_e, sx_e = centered_spatial_slices_at_point(
+                        pz_e, py_e, px_e, patch_size, padded_shape
+                    )
+                    k_e = spatial_slices_to_tuple(sz_e, sy_e, sx_e)
+                    if k_e in visited_keys:
+                        continue
+                    visited_keys.add(k_e)
+                    if not fill_tile(sz_e, sy_e, sx_e, cl_idx):
+                        continue
+                    raw_e = _maybe_to_device(self._internal_maybe_mirror_and_predict(workon)[0], results_device)
+                    pred_e = (raw_e * gaussian if self.use_gaussian else raw_e).to(dtype=acc_dtype)
+                    predicted_logits[(slice(None), sz_e, sy_e, sx_e)] += pred_e
+                    n_predictions[sz_e, sy_e, sx_e] += gaussian_acc
+                    tiles_done += 1
+                    if report_border_tile_progress and bfcb is not None:
+                        tile_count[0] += 1
+                        bfcb(tile_count[0], total_bt * max(1, len(clusters_pad)))
+                    budget = max_border_expand_extra - tiles_done
+                    if budget > 0:
+                        for c in plan_border_expansion_centers_from_logits(
+                            raw_e,
+                            self.label_manager,
+                            sz_e,
+                            sy_e,
+                            sx_e,
+                            patch_size,
+                            padded_shape,
+                            seed_key,
+                            budget,
+                            skip_keys=visited_keys,
+                        ):
+                            q.append(c)
+                if self.verbose and tiles_done:
+                    print(
+                        f"[from_prompts] border_expand cluster {cl_idx}: {tiles_done} extra tile(s)",
+                        flush=True,
+                    )
+            safe_divide_merged_logits(predicted_logits, n_predictions, bg_vec)
+            predicted_logits = predicted_logits[(slice(None), *slicer_revert[1:])]
+            if torch.any(torch.isinf(predicted_logits)):
+                raise RuntimeError("Encountered inf in predicted array. Aborting.")
+        except Exception as e:
+            empty_cache(self.device)
+            empty_cache(results_device)
+            raise e
+        return predicted_logits.cpu().float()
+
+    def _fill_workon_patch(
         self,
         workon: torch.Tensor,
         data_padded: torch.Tensor,
@@ -741,26 +917,26 @@ class nnUNetROIPredictor(nnUNetPredictor):
         sx: slice,
         n_img_ch: int,
         encode_prompt: bool,
-        seed_pad: Tuple[int, int, int],
+        pos_local: List[Tuple[int, int, int]],
+        neg_local: List[Tuple[int, int, int]],
         prompt_cfg,
         patch_size: Tuple[int, int, int],
     ) -> None:
         sl_img = (slice(None), sz, sy, sx)
         workon[0, :n_img_ch].copy_(data_padded[sl_img])
-        if encode_prompt:
-            loc = local_prompt_points_for_patch(seed_pad, sz, sy, sx, patch_size)
-            pr = encode_points_to_heatmap_pair(
-                loc,
-                [],
-                patch_size,
-                prompt_cfg.point_radius_vox,
-                prompt_cfg.encoding,
-                device=self.device,
-                intensity_scale=prompt_cfg.prompt_intensity_scale,
-            )
-            workon[0, n_img_ch:].copy_(pr.float())
-        else:
+        if not encode_prompt:
             workon[0, n_img_ch:].zero_()
+            return
+        pr = encode_points_to_heatmap_pair(
+            pos_local,
+            neg_local,
+            patch_size,
+            prompt_cfg.point_radius_vox,
+            prompt_cfg.encoding,
+            device=self.device,
+            intensity_scale=prompt_cfg.prompt_intensity_scale,
+        )
+        workon[0, n_img_ch:].copy_(pr.float())
 
     def _predict_logits_single_patch_single_fold(
         self,
@@ -817,7 +993,8 @@ class nnUNetROIPredictor(nnUNetPredictor):
         workon = torch.empty((1, n_img_ch + 2, *patch_size), device=self.device, dtype=torch.float32)
 
         try:
-            self._fill_single_patch_workon(
+            pos0 = local_prompt_points_for_patch(seed_pad, sz, sy, sx, patch_size)
+            self._fill_workon_patch(
                 workon,
                 data_padded,
                 sz,
@@ -825,7 +1002,8 @@ class nnUNetROIPredictor(nnUNetPredictor):
                 sx,
                 n_img_ch,
                 encode_prompt,
-                seed_pad,
+                pos0,
+                [],
                 prompt_cfg,
                 patch_size,
             )
@@ -899,7 +1077,8 @@ class nnUNetROIPredictor(nnUNetPredictor):
                 if k_e in visited_keys:
                     continue
                 visited_keys.add(k_e)
-                self._fill_single_patch_workon(
+                pos_e = local_prompt_points_for_patch(seed_pad, sz_e, sy_e, sx_e, patch_size)
+                self._fill_workon_patch(
                     workon,
                     data_padded,
                     sz_e,
@@ -907,7 +1086,8 @@ class nnUNetROIPredictor(nnUNetPredictor):
                     sx_e,
                     n_img_ch,
                     encode_prompt,
-                    seed_pad,
+                    pos_e,
+                    [],
                     prompt_cfg,
                     patch_size,
                 )
@@ -946,169 +1126,8 @@ class nnUNetROIPredictor(nnUNetPredictor):
             raise e
         return predicted_logits.cpu().float()
 
-    def _predict_logits_roi_per_point_patch_single_fold(
-        self,
-        data: torch.Tensor,
-        points_zyx: List[Tuple[int, int, int]],
-        cfg: RoiPromptConfig,
-    ) -> torch.Tensor:
-        self.network = self.network.to(self.device)
-        self.network.eval()
-        shape = tuple(data.shape[1:])
-        patch_size = tuple(self.configuration_manager.patch_size)
-        prompt_cfg = cfg.prompt
-        num_heads = self.label_manager.num_segmentation_heads
-
-        data_f = data.float()
-        data_padded, slicer_revert = pad_nd_image(
-            data_f, patch_size, "constant", {"value": 0}, True, None
-        )
-        padded_shape = tuple(data_padded.shape[1:])
-        data_padded = data_padded.to(self.device)
-
-        results_device = self.device if self.perform_everything_on_device and self.device.type != "cpu" else torch.device("cpu")
-        predicted_logits = torch.zeros(
-            (num_heads, *padded_shape), dtype=torch.float32, device=results_device
-        )
-        n_predictions = torch.zeros(padded_shape, dtype=torch.float32, device=results_device)
-        if self.use_gaussian:
-            gaussian = compute_gaussian(
-                tuple(patch_size),
-                sigma_scale=1.0 / 8,
-                value_scaling_factor=10,
-                dtype=torch.float32,
-                device=results_device,
-            )
-        else:
-            gaussian = torch.ones(patch_size, dtype=torch.float32, device=results_device)
-
-        points_pad = map_points_zyx_unpadded_to_padded(points_zyx, slicer_revert)
-        max_visits = cfg.inference.max_patch_expansion_visits
-        max_depth = cfg.inference.max_patch_expansion_depth
-
-        if not points_pad:
-            cz, cy, cx = padded_shape[0] // 2, padded_shape[1] // 2, padded_shape[2] // 2
-            sz, sy, sx = centered_spatial_slices_at_point(cz, cy, cx, patch_size, padded_shape)
-            queue: deque = deque([(sz, sy, sx, None, 0)])
-        else:
-            seen_init = set()
-            queue = deque()
-            for seed in points_pad:
-                sz, sy, sx = centered_spatial_slices_at_point(*seed, patch_size, padded_shape)
-                k = (spatial_slices_to_tuple(sz, sy, sx), seed)
-                if k in seen_init:
-                    continue
-                seen_init.add(k)
-                queue.append((sz, sy, sx, seed, 0))
-
-        visited = set()
-        visit_count = 0
-        bg_vec = background_logits_vector(self.label_manager, num_heads, results_device)
-
-        try:
-            while queue and visit_count < max_visits:
-                sz, sy, sx, seed_pad, depth = queue.popleft()
-                vkey = (spatial_slices_to_tuple(sz, sy, sx), seed_pad)
-                if vkey in visited:
-                    continue
-                visited.add(vkey)
-                visit_count += 1
-
-                sl = (slice(None), sz, sy, sx)
-                img_crop = data_padded[sl].clone().unsqueeze(0)
-                local_pts = local_prompt_points_for_patch(seed_pad, sz, sy, sx, patch_size)
-                prompt = encode_points_to_heatmap_pair(
-                    local_pts,
-                    [],
-                    patch_size,
-                    prompt_cfg.point_radius_vox,
-                    prompt_cfg.encoding,
-                    device=self.device,
-                    intensity_scale=prompt_cfg.prompt_intensity_scale,
-                )
-                workon = torch.cat([img_crop[0], prompt], dim=0).unsqueeze(0).contiguous()
-                pred_raw = self._internal_maybe_mirror_and_predict(workon)[0].to(results_device)
-                pred = pred_raw * gaussian if self.use_gaussian else pred_raw
-                predicted_logits[(slice(None), sz, sy, sx)] += pred
-                n_predictions[sz, sy, sx] += gaussian
-
-                if visit_count >= max_visits:
-                    if queue:
-                        self._roi_patch_visits_capped = True
-                    break
-
-                faces = touching_patch_faces_from_logits(pred_raw, self.label_manager)
-                for axis, is_low in faces:
-                    if max_depth is not None and depth >= max_depth:
-                        continue
-                    nsz, nsy, nsx = shift_spatial_slices(
-                        sz, sy, sx, axis, is_low, patch_size, padded_shape
-                    )
-                    if spatial_slices_to_tuple(nsz, nsy, nsx) == spatial_slices_to_tuple(sz, sy, sx):
-                        continue
-                    nk = (spatial_slices_to_tuple(nsz, nsy, nsx), seed_pad)
-                    if nk not in visited:
-                        queue.append((nsz, nsy, nsx, seed_pad, depth + 1))
-
-            safe_divide_merged_logits(predicted_logits, n_predictions, bg_vec)
-            predicted_logits = predicted_logits[(slice(None), *slicer_revert[1:])]
-            if torch.any(torch.isinf(predicted_logits)):
-                raise RuntimeError("Encountered inf in predicted array. Aborting.")
-        except Exception as e:
-            empty_cache(self.device)
-            empty_cache(results_device)
-            raise e
-        return predicted_logits.cpu().float()
-
-    def _predict_logits_roi_single_fold(
-        self,
-        data: torch.Tensor,
-        points_zyx: List[Tuple[int, int, int]],
-        cfg: RoiPromptConfig,
-        tile_step_size: float,
-    ) -> torch.Tensor:
-        self.network = self.network.to(self.device)
-        self.network.eval()
-        shape = tuple(data.shape[1:])
-        patch_size = tuple(self.configuration_manager.patch_size)
-        prompt_cfg = cfg.prompt
-        prompt = encode_points_to_heatmap_pair(
-            points_zyx,
-            [],
-            shape,
-            prompt_cfg.point_radius_vox,
-            prompt_cfg.encoding,
-            device=self.device,
-            intensity_scale=prompt_cfg.prompt_intensity_scale,
-        )
-        data = data.to(self.device)
-        data_with_prompt = torch.cat([data, prompt], dim=0)
-        data_padded, slicer_revert = pad_nd_image(
-            data_with_prompt, patch_size, "constant", {"value": 0}, True, None
-        )
-        padded_shape = tuple(data_padded.shape[1:])
-        slicers = get_prompt_aware_slicers(
-            padded_shape, patch_size, tile_step_size, prompt[0:1].to(self.device)
-        )
-        if not slicers:
-            return torch.zeros(
-                (self.label_manager.num_segmentation_heads, *shape),
-                dtype=torch.float32,
-                device="cpu",
-            )
-        predicted_logits = self._internal_predict_sliding_window_return_logits(
-            data_padded, slicers,
-            self.perform_everything_on_device and self.device.type != "cpu",
-        )
-        predicted_logits = predicted_logits[(slice(None), *slicer_revert[1:])]
-        if torch.any(torch.isinf(predicted_logits)):
-            raise RuntimeError("Encountered inf in predicted array. Aborting.")
-        return predicted_logits.cpu().float()
-
     def predict_sliding_window_return_logits(self, input_image: torch.Tensor) -> torch.Tensor:
-        """
-        Override to prevent accidental full-volume usage. ROI mode must use predict_logits_roi_mode.
-        """
+        """Override to prevent accidental full-volume usage; use predict_logits_single_patch instead."""
         raise RuntimeError(
-            "nnUNetROIPredictor does not support full-volume sliding. Use predict_logits_roi_mode."
+            "nnUNetROIPredictor does not support full-volume sliding. Use predict_logits_single_patch."
         )

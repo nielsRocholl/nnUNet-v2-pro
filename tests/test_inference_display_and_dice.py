@@ -156,9 +156,9 @@ def test_vanilla_sequential_with_display():
     assert len(out_files) >= 1
 
 
-def test_roi_with_display():
-    """ROI predict with display; no exception."""
-    from nnunetv2.inference.roi_predict_entrypoint import predict_roi_entry_point
+def test_single_patch_with_display():
+    """Single-patch predict with display; no exception."""
+    from nnunetv2.inference.single_patch_predict_entrypoint import predict_single_patch_entry_point
 
     preprocessed_dir = join(
         os.environ.get("nnUNet_preprocessed", ""),
@@ -193,7 +193,7 @@ def test_roi_with_display():
         os.makedirs(out_dir, exist_ok=True)
         old_argv = sys.argv
         sys.argv = [
-            "nnUNetv2_predict_roi",
+            "nnUNetv2_predict_single_patch",
             "-i", raw_images,
             "-o", out_dir,
             "-m", model_folder,
@@ -202,7 +202,7 @@ def test_roi_with_display():
             "-device", "cpu",
         ]
         try:
-            predict_roi_entry_point()
+            predict_single_patch_entry_point()
         finally:
             sys.argv = old_argv
         out_files = [f for f in os.listdir(out_dir) if f.endswith(".nii.gz")]

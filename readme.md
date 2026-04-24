@@ -61,8 +61,8 @@ A complete prompt-aware extension for lesion segmentation:
 - **Large-lesion config** — Bbox/centroid helpers for giant lesions; **keep `max_extra: 0`** (extra-patch oversampling varies batch size and breaks fixed-batch training/validation). See the prompt-aware guide.
 - **Precomputed centroids** — `{case}_centroids.json` next to each `*_seg.b2nd` (auto after preprocess or `nnUNetv2_precompute_centroids`). See [documentation/pro/precompute_centroids.md](documentation/pro/precompute_centroids.md).
 - **nnUNetTrainerPromptAware** — Trainer variant wiring the prompt-aware dataloader; keeps standard Dice+CE loss
-- **ROI-only inference** — Sliding windows over dilated bbox only (no full-volume sliding)
-- **CLI** — `nnUNetv2_predict_roi` with `--config`, `--points_json`, optional `--points_space`
+- **Single-patch prompt inference** — One network tile (optional border expansion), no full-volume sliding on the prompt-aware predictor
+- **CLI** — `nnUNetv2_predict_single_patch` (one point) and `nnUNetv2_predict_from_prompts` (multiple points, clustered); `--config`, point JSON / inline, optional `--points_space`
 
 See [documentation/pro/prompt_aware_guide.md](documentation/pro/prompt_aware_guide.md) for detailed usage.
 
@@ -90,12 +90,12 @@ nnUNetv2_train DATASET_ID 3d_fullres 0 -tr nnUNetTrainerPromptAware -p nnUNetRes
 
 Use `--config path/to/config.json` to override the bundled default.
 
-### 4. ROI inference with point prompts
+### 4. Single-patch inference with point prompts
 
 ```bash
 echo '{"points": [[60, 125, 125]], "points_space": "voxel"}' > points.json
 
-nnUNetv2_predict_roi -i $nnUNet_raw/Dataset010/imagesTr -o ./predictions_roi \
+nnUNetv2_predict_single_patch -i $nnUNet_raw/Dataset010/imagesTr -o ./predictions_single_patch \
   -m $nnUNet_results/Dataset010/nnUNetTrainerPromptAware__nnUNetResEncUNetLPlans__3d_fullres \
   -f 0 --points_json points.json
 ```

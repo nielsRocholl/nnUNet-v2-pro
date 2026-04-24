@@ -21,12 +21,11 @@ FIXTURE_CONFIG = join(Path(__file__).resolve().parent, "fixtures", "nnunet_pro_c
 
 def test_inference_config_defaults_from_partial_json():
     cfg = load_config(FIXTURE_CONFIG)
-    assert cfg.inference.roi_inference_mode == "dilated_sliding"
-    assert cfg.inference.max_patch_expansion_visits == 64
-    assert cfg.inference.max_patch_expansion_depth is None
+    assert cfg.inference.tile_step_size == 0.75
+    assert cfg.inference.disable_tta_default is False
 
 
-def test_inference_config_per_point_keys():
+def test_inference_config_ignores_legacy_roi_keys():
     import json
     import tempfile
 
@@ -34,7 +33,7 @@ def test_inference_config_per_point_keys():
         d = json.load(f)
     d["inference"] = {
         **d.get("inference", {}),
-        "roi_inference_mode": "per_point_patch",
+        "roi_inference_mode": "dilated_sliding",
         "max_patch_expansion_visits": 8,
         "max_patch_expansion_depth": 2,
     }
@@ -43,9 +42,8 @@ def test_inference_config_per_point_keys():
         path = tf.name
     try:
         cfg = load_config(path)
-        assert cfg.inference.roi_inference_mode == "per_point_patch"
-        assert cfg.inference.max_patch_expansion_visits == 8
-        assert cfg.inference.max_patch_expansion_depth == 2
+        assert cfg.inference.tile_step_size == 0.75
+        assert cfg.inference.disable_tta_default is False
     finally:
         import os
 
@@ -104,9 +102,8 @@ def test_spatial_slices_tuple_stable():
 
 def test_inference_config_dataclass_replaceable():
     a = InferenceConfig(0.5, False)
-    assert a.roi_inference_mode == "dilated_sliding"
     from dataclasses import replace
 
-    b = replace(a, roi_inference_mode="per_point_patch", max_patch_expansion_visits=3)
-    assert b.roi_inference_mode == "per_point_patch"
-    assert b.max_patch_expansion_visits == 3
+    b = replace(a, tile_step_size=0.25, disable_tta_default=True)
+    assert b.tile_step_size == 0.25
+    assert b.disable_tta_default is True

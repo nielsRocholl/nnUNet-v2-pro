@@ -8,9 +8,9 @@ The extension adds:
 
 1. **Prompt channels** — Two extra input channels (pos + neg) for point heatmaps (concatenated with the image)
 2. **Prompt-aware training** — Patches sampled with different prompt conditions (clean, noisy, missing, negative)
-3. **ROI-only inference** — Sliding windows only over a dilated region around the prompt, never full-volume
+3. **Single-patch / multi-prompt prompt-aware inference** — One or more network tiles (clustered prompts + optional per-cluster border expansion), never full-volume sliding on `nnUNetROIPredictor`
 
-Standard nnU-Net workflows (preprocessing, default training, standard inference) are unchanged. The prompt-aware path is opt-in via `nnUNetTrainerPromptAware` and the Pro CLIs `nnUNetv2_predict_roi` / `nnUNetv2_predict_single_patch`.
+Standard nnU-Net workflows (preprocessing, default training, standard inference) are unchanged. The prompt-aware path is opt-in via `nnUNetTrainerPromptAware` and the Pro CLIs `nnUNetv2_predict_single_patch` (one point) or `nnUNetv2_predict_from_prompts` (multiple points, patch-bbox clustering).
 
 ---
 
@@ -126,31 +126,9 @@ Trainers that **override** `configure_optimizers` (e.g. Adam, cosine, Primus/war
 
 ## Inference
 
-### CLI: nnUNetv2_predict_roi
+### CLI: `nnUNetv2_predict_single_patch`
 
-```bash
-nnUNetv2_predict_roi -i INPUT_FOLDER -o OUTPUT_FOLDER -m MODEL_FOLDER \
-  --points_json points.json [--config CONFIG] [--points_space voxel|world]
-```
-
-| Argument | Required | Description |
-|----------|----------|-------------|
-| `-i` | Yes | Input folder or file (same channel layout as training) |
-| `-o` | Yes | Output folder |
-| `-m` | Yes | Model folder (trained with nnUNetTrainerPromptAware) |
-| `--points_json` | Yes | Path to JSON with `points` and `points_space` |
-| `--config` | No | Config path; default: `{model_folder}/nnunet_pro_config.json` |
-| `--points_space` | No | Override `points_space` from JSON (`voxel` or `world`) |
-| `--disable_tta` | No | Disable test-time augmentation |
-| `--labels_folder` | No | Folder with ground truth for per-case DICE and running average |
-| `-f` | No | Folds (default: 0) |
-| `-chk` | No | Checkpoint name (default: checkpoint_final.pth) |
-| `-device` | No | `cuda`, `cpu`, or `mps` |
-| `--roi_mode` | No | Override `inference.roi_inference_mode`: `dilated_sliding` (default) or `per_point_patch` |
-
-### CLI: nnUNetv2_predict_single_patch
-
-Full-case preprocessing and export match `nnUNetv2_predict_roi`, but the **core** inference is single-tile around the click: **no** dilated-bbox sliding window. **By default** exactly **one** network tile is centered on the given point, and both prompt channels in that tile are **zero** (training mode `pos_no_prompt`). With **`--encode_prompt`**, the point is encoded in-patch using the same heatmap machinery as ROI `per_point_patch` (`prompt.point_radius_vox`, `prompt.encoding`, `prompt.prompt_intensity_scale` in `nnunet_pro_config.json`). With **`--border_expand`**, after the seed tile the run **iteratively** plans and runs extra tiles: each tile’s prediction is scanned for foreground on the patch hull; **every** hull face with contact in a perimeter connected component can propose a neighbor tile (not only one “dominant” face). New tiles are queued (BFS) until no candidates remain or **`--border_expand_max_extra`** is reached; logits are **merged** with Gaussian weights into one full-volume field before export. Flat cutoffs can still appear if the cap is too low for very large lesions. Requires **exactly one** point in the chosen point payload (file, inline JSON, or `--point_zyx`).
+Input is preprocessed and predictions are exported like standard nnU-Net, but the **core** forward pass uses **one** network tile centered on the point (not full-volume sliding). **By default** both prompt channels in that tile are **zero** (training mode `pos_no_prompt`). With **`--encode_prompt`**, the point is encoded in-patch using `encode_points_to_heatmap_pair` and `prompt.point_radius_vox`, `prompt.encoding`, and `prompt.prompt_intensity_scale` in `nnunet_pro_config.json`. With **`--border_expand`**, after the seed tile the run **iteratively** plans and runs extra tiles: each tile’s prediction is scanned for foreground on the patch hull; **every** hull face with contact in a perimeter connected component can propose a neighbor tile (not only one “dominant” face). New tiles are queued (BFS) until no candidates remain or **`--border_expand_max_extra`** is reached; logits are **merged** with Gaussian weights into one full-volume field before export. Flat cutoffs can still appear if the cap is too low for very large lesions. Requires **exactly one** point in the chosen point payload (file, inline JSON, or `--point_zyx`).
 
 ```bash
 nnUNetv2_predict_single_patch -i INPUT_FOLDER -o OUTPUT_FOLDER -m MODEL_FOLDER \
@@ -186,25 +164,35 @@ echo '{"points": [[60, 125, 125]], "points_space": "voxel"}' > points_one.json
 
 nnUNetv2_predict_single_patch -i $nnUNet_raw/Dataset010/imagesTr -o ./predictions_single_patch \
   -m $nnUNet_results/Dataset010/nnUNetTrainerPromptAware__nnUNetResEncUNetLPlans__3d_fullres \
-  -f 0 --points_json points_one.json
+  -f 0   --points_json points_one.json
 ```
 
-### ROI inference modes (`inference` config)
+### CLI: `nnUNetv2_predict_from_prompts`
 
-| Key | Default | Description |
-|-----|---------|-------------|
-| `roi_inference_mode` | `dilated_sliding` | `dilated_sliding`: one full-volume 2-channel prompt, sliding windows only over dilated bbox (existing behavior). `per_point_patch`: one local 2-channel prompt per forward, patch centered on each point, optional border expansion. |
-| `max_patch_expansion_visits` | `64` | Max number of patch forwards per fold (seeds + expansions). When reached, expansion stops; with `--verbose`, a one-line notice is printed. |
-| `max_patch_expansion_depth` | omitted | Optional max BFS depth from each seed; omit for no depth limit. |
+Use this when you have **several** lesion prompts in one volume. Points are sorted and **greedy-clustered** in preprocessed `(z,y,x)`: two points stay in the same cluster if their axis-aligned bounding box, **expanded** by `--cluster_overlap_margin` (fraction of `patch_size` per axis, default `0.1`), still fits inside the network `patch_size`. Each cluster gets one seed tile centered on the cluster centroid; all in-tile points from that cluster are encoded into the **pos** heatmap when `--encode_prompt` is set. **`--border_expand`** runs the same per-cluster BFS + Gaussian merge as single-patch, but all clusters share one full-volume accumulator. If the same tile position would be run twice (e.g. two centroids land in the same window), the **second** forward is **skipped** and a `UserWarning` is emitted (first forward kept). **`--cross_cluster_neg`**: other clusters’ **centroids** that fall inside the current tile are added to the **neg** heatmap (requires `--encode_prompt`).
 
-**`per_point_patch` behavior (summary)**
+```bash
+nnUNetv2_predict_from_prompts -i INPUT_FOLDER -o OUTPUT_FOLDER -m MODEL_FOLDER \
+  --points_json points.json [--encode_prompt] [--border_expand] [--cluster_overlap_margin 0.1] [--cross_cluster_neg]
+```
 
-1. Image is padded with `pad_nd_image` (image channels only). All patch indices use this **padded** grid; logits are cropped back before export (same world space as standard ROI).
-2. Each seed point gets a `patch_size` window centered on the point (clamped at borders). Duplicate identical `(window, point)` pairs are skipped.
-3. Empty `points` list: one centered patch with **zero** prompt channels (same spirit as empty prompt in dilated mode).
-4. Each forward uses `encode_points_to_heatmap_pair` on **patch-local** coordinates (seed inside the patch, else patch center).
-5. Predictions are merged with the same Gaussian weighting as nnU-Net sliding windows. Voxels never covered get **background-preferring** logits (no NaNs).
-6. If foreground touches a **face** of the current patch (per `label_manager`), extra windows are queued, shifted by `patch_size//2` along that axis (outward), clamped. TTA matches existing ROI (`_internal_maybe_mirror_and_predict`).
+| Argument | Notes |
+|----------|--------|
+| `--points_json` / `--points_inline` | **Required** (one of). Same `points` array schema as above; **one or more** points. No `--point_zyx` (use JSON for multiple). |
+| `--cluster_overlap_margin` | Default `0.1` (clamped in code to `0..0.5`); larger merges more points per cluster. |
+| `--encode_prompt` | Recommended for multi-lesion; in-tile pos (and neg if `--cross_cluster_neg`) from `nnunet_pro_config.json` prompt fields. |
+| `--cross_cluster_neg` | Off by default. Other centroids in-tile only; pair with `--encode_prompt`. |
+| Other flags | Same role as `nnUNetv2_predict_single_patch` where applicable (`-f`, `--border_expand_max_extra`, DICE, device, TTA, debug patch). |
+| `--stdin_loop` | One points JSON per line, single file `-i` (like single-patch). |
+
+**When to use which:** one interactive click → `nnUNetv2_predict_single_patch`. many known prompts in one case → `nnUNetv2_predict_from_prompts` to avoid one forward per point when prompts fit shared patches.
+
+### How single-patch + optional border expand work
+
+1. **Preprocess** the case with the same pipeline as `nnUNetv2_predict`.
+2. The volume is **padded** for patch extraction; the seed is a `patch_size` window centered on the point (clamped at borders), then logits are **placed back** into full shape for export.
+3. **Default**: one forward with zero prompt channels, or in-patch heatmaps if `--encode_prompt`.
+4. **Border expand** (`--border_expand`): BFS of extra tiles, Gaussian merge, background-preferring logits where never covered (see CLI table above). TTA uses the same path as the rest of nnU-Net (`_internal_maybe_mirror_and_predict`).
 
 ### points.json format
 
@@ -226,36 +214,24 @@ nnUNetv2_predict_single_patch -i $nnUNet_raw/Dataset010/imagesTr -o ./prediction
 # Voxel: preprocessed (z,y,x)
 echo '{"points": [[60, 125, 125]], "points_space": "voxel"}' > points.json
 
-nnUNetv2_predict_roi -i $nnUNet_raw/Dataset010/imagesTr -o ./predictions_roi \
+nnUNetv2_predict_single_patch -i $nnUNet_raw/Dataset010/imagesTr -o ./predictions_single_patch \
   -m $nnUNet_results/Dataset010/nnUNetTrainerPromptAware__nnUNetResEncUNetLPlans__3d_fullres \
   -f 0 --points_json points.json
 ```
 
 If the model was trained with prompt-aware, the config is in the model folder and `--config` can be omitted.
 
-### How inference works (`dilated_sliding`, default)
-
-1. **Preprocessing**: Same as standard nnU-Net (resampling, normalization).
-2. **Prompt heatmap**: All points are encoded into **one** full-volume 2-channel heatmap (pos + zeros for neg; radius `point_radius_vox`, encoding from config).
-3. **Dilated bbox**: Bbox around prompt extent + `patch_size/2` per axis, clamped to image.
-4. **Sliding windows**: Only windows overlapping this bbox are used.
-5. **Single patch**: If the dilated bbox is smaller than the patch, a single centered patch is used.
-6. **No full-volume sliding**: ROI mode never runs full-volume sliding.
-
-For **`per_point_patch`**, see the table above (local prompts, queue + border expansion, Gaussian merge, safe background fill outside tiled regions).
-
 ---
 
 ## Inference display and per-sample DICE
 
-Both **vanilla** (`nnUNetv2_predict`), **ROI** (`nnUNetv2_predict_roi`), and **single-patch** (`nnUNetv2_predict_single_patch`) inference use Rich-formatted output (Panel, Progress bar, summary table) consistent with plan/preprocess/train.
+Both **vanilla** (`nnUNetv2_predict`), **single-patch** (`nnUNetv2_predict_single_patch`), and **from-prompts** (`nnUNetv2_predict_from_prompts`) use Rich-formatted output (Panel, Progress bar, summary table) consistent with plan/preprocess/train.
 
 ### Per-sample DICE and running average
 
 When ground truth labels are available, pass `--labels_folder` to print per-case DICE and a running mean:
 
-- **ROI**: `nnUNetv2_predict_roi ... --labels_folder $nnUNet_raw/Dataset010/labelsTr`
-- **Single-patch**: `nnUNetv2_predict_single_patch ... --labels_folder $nnUNet_raw/Dataset010/labelsTr`
+- **Single-patch / from-prompts**: add `--labels_folder $nnUNet_raw/Dataset010/labelsTr`
 - **Vanilla**: `nnUNetv2_predict -i ... -o ... -m ... --labels_folder $nnUNet_raw/Dataset010/labelsTr -npp 0 -nps 0`
 
 Vanilla requires `-npp 0 -nps 0` (sequential mode) for DICE; multiprocessing mode does not support it. Labels must match input case IDs (e.g. `case_001.nii.gz` in labels folder for `case_001_0000.nii.gz` in images).
@@ -277,7 +253,7 @@ If `points_space` is `voxel`, indices are usually on the **full loaded volume** 
 
 ## Coordinate validation
 
-A common source of errors is mixing up **physical vs voxel** coordinates and **axis ordering** (x,y,z vs z,y,x). ROI inference validates and converts coordinates before use.
+A common source of errors is mixing up **physical vs voxel** coordinates and **axis ordering** (x,y,z vs z,y,x). Single-patch inference validates and converts coordinates before use.
 
 ### Supported formats
 
@@ -320,7 +296,7 @@ Specify `points_format` in your JSON when your tool exports a different order:
 
 - **Lesion segmentation** with point prompts (e.g. from a detector or user clicks).
 - **Semi-automatic workflows** where prompts are optional.
-- **ROI-focused inference** when you only care about regions around prompts.
+- **Click-first inference** when you only need a patch around a point (and optional `border_expand` for large lesions).
 
 ---
 
@@ -330,4 +306,4 @@ Specify `points_format` in your JSON when your tool exports a different order:
 - Training: `nnUNetv2_train` with default trainer — unchanged.
 - Inference: `nnUNetv2_predict` — unchanged.
 
-The prompt-aware path is separate and only used when you choose `nnUNetTrainerPromptAware` and `nnUNetv2_predict_roi` or `nnUNetv2_predict_single_patch`.
+The prompt-aware path is separate and only used when you choose `nnUNetTrainerPromptAware` and the Pro CLIs `nnUNetv2_predict_single_patch` or `nnUNetv2_predict_from_prompts` for inference.
